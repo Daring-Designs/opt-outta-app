@@ -85,7 +85,7 @@ jobs:
           _RAW_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           API_PRIVATE_KEY: ${{ secrets.API_PRIVATE_KEY }}
           PLAYBOOK_PUBLIC_KEY: ${{ secrets.PLAYBOOK_PUBLIC_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           # Strip any newlines GitHub may have injected into the base64 key
           export TAURI_SIGNING_PRIVATE_KEY=$(printf '%s' "$_RAW_KEY" | tr -d '\n\r')
