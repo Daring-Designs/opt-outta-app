@@ -79,27 +79,37 @@ jobs:
           prerelease: false
           args: --target ${{ matrix.target }}
 
-      - name: Find updater artifacts
-        id: updater
+      - name: Collect updater artifacts (Unix)
+        if: matrix.platform != 'windows-latest'
+        id: updater_unix
         shell: bash
         run: |
-          echo "=== Listing all .sig files ==="
-          find src-tauri/target -name "*.sig" 2>/dev/null || true
+          echo "=== All .sig files ==="
+          find src-tauri/target -name "*.sig" || true
 
           if [ "${{ matrix.platform }}" = "macos-latest" ]; then
-            sig=$(find src-tauri/target -name "*.app.tar.gz.sig" 2>/dev/null | head -1)
+            sig=$(find src-tauri/target -name "*.app.tar.gz.sig" | head -1)
             echo "sig=$sig" >> "$GITHUB_OUTPUT"
-          elif [ "${{ matrix.platform }}" = "ubuntu-22.04" ]; then
-            bundle=$(find src-tauri/target -name "*.AppImage.tar.gz" ! -name "*.sig" 2>/dev/null | head -1)
-            sig=$(find src-tauri/target -name "*.AppImage.tar.gz.sig" 2>/dev/null | head -1)
-            echo "bundle=$bundle" >> "$GITHUB_OUTPUT"
-            echo "sig=$sig" >> "$GITHUB_OUTPUT"
-          elif [ "${{ matrix.platform }}" = "windows-latest" ]; then
-            bundle=$(find src-tauri/target -name "*.nsis.zip" ! -name "*.sig" 2>/dev/null | head -1)
-            sig=$(find src-tauri/target -name "*.nsis.zip.sig" 2>/dev/null | head -1)
+          else
+            bundle=$(find src-tauri/target -name "*.AppImage.tar.gz" ! -name "*.sig" | head -1)
+            sig=$(find src-tauri/target -name "*.AppImage.tar.gz.sig" | head -1)
             echo "bundle=$bundle" >> "$GITHUB_OUTPUT"
             echo "sig=$sig" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Collect updater artifacts (Windows)
+        if: matrix.platform == 'windows-latest'
+        id: updater_win
+        shell: pwsh
+        run: |
+          Write-Host "=== All .sig files ==="
+          Get-ChildItem -Recurse -Path src-tauri\target -Filter "*.sig" | ForEach-Object { Write-Host $_.FullName }
+
+          $zip = Get-ChildItem -Recurse -Path src-tauri\target -Filter "*.nsis.zip" | Where-Object { $_.Name -notmatch "\.sig$" } | Select-Object -First 1
+          $sig = Get-ChildItem -Recurse -Path src-tauri\target -Filter "*.nsis.zip.sig" | Select-Object -First 1
+
+          if ($zip) { "bundle=$($zip.FullName)" | Out-File -Append -FilePath $env:GITHUB_OUTPUT -Encoding utf8 }
+          if ($sig) { "sig=$($sig.FullName)" | Out-File -Append -FilePath $env:GITHUB_OUTPUT -Encoding utf8 }
 
       - name: Upload updater bundles to release
         shell: bash
@@ -107,36 +117,30 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           tag="${{ github.ref_name }}"
+          bundle="${{ steps.updater_unix.outputs.bundle }}${{ steps.updater_win.outputs.bundle }}"
+          sig="${{ steps.updater_unix.outputs.sig }}${{ steps.updater_win.outputs.sig }}"
 
-          if [ "${{ matrix.platform }}" = "macos-latest" ]; then
-            sig="${{ steps.updater.outputs.sig }}"
-            if [ -n "$sig" ] && [ -f "$sig" ]; then
-              cp "$sig" "Opt-Outta_universal.app.tar.gz.sig"
-              gh release upload "$tag" "Opt-Outta_universal.app.tar.gz.sig" --clobber
-            else
-              echo "Warning: macOS sig not found"
-            fi
+          echo "bundle=$bundle"
+          echo "sig=$sig"
+
+          if [ "${{ matrix.platform }}" = "macos-latest" ] && [ -n "$sig" ]; then
+            cp "$sig" "Opt-Outta_universal.app.tar.gz.sig"
+            gh release upload "$tag" "Opt-Outta_universal.app.tar.gz.sig" --clobber
           fi
 
-          if [ "${{ matrix.platform }}" = "ubuntu-22.04" ]; then
-            bundle="${{ steps.updater.outputs.bundle }}"
-            sig="${{ steps.updater.outputs.sig }}"
-            [ -n "$bundle" ] && [ -f "$bundle" ] && gh release upload "$tag" "$bundle" --clobber
-            [ -n "$sig" ] && [ -f "$sig" ] && gh release upload "$tag" "$sig" --clobber
+          if [ -n "$bundle" ] && [ -f "$bundle" ]; then
+            gh release upload "$tag" "$bundle" --clobber
           fi
 
-          if [ "${{ matrix.platform }}" = "windows-latest" ]; then
-            bundle="${{ steps.updater.outputs.bundle }}"
-            sig="${{ steps.updater.outputs.sig }}"
-            [ -n "$bundle" ] && [ -f "$bundle" ] && gh release upload "$tag" "$bundle" --clobber
-            [ -n "$sig" ] && [ -f "$sig" ] && gh release upload "$tag" "$sig" --clobber
+          if [ "${{ matrix.platform }}" != "macos-latest" ] && [ -n "$sig" ] && [ -f "$sig" ]; then
+            gh release upload "$tag" "$sig" --clobber
           fi
 
       - name: Save signature for updater JSON
         shell: bash
         run: |
           mkdir -p updater-sigs
-          sig="${{ steps.updater.outputs.sig }}"
+          sig="${{ steps.updater_unix.outputs.sig }}${{ steps.updater_win.outputs.sig }}"
           if [ -n "$sig" ] && [ -f "$sig" ]; then
             cp "$sig" "updater-sigs/${{ matrix.updater_key }}.sig"
           else
