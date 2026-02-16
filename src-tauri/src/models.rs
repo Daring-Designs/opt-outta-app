@@ -302,7 +302,9 @@ pub struct Playbook {
     pub created_at: String,
 }
 
-/// Playbook summary without steps (from GET /playbooks list)
+/// Playbook summary (from GET /playbooks list).
+/// The API returns steps + signature; we deserialize them for verification
+/// but skip them when serializing to the frontend.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PlaybookSummary {
     pub id: String,
@@ -319,6 +321,12 @@ pub struct PlaybookSummary {
     pub failure_count: u32,
     pub score: i32,
     pub created_at: String,
+    /// Used for signature verification; not sent to the frontend.
+    #[serde(default, skip_serializing)]
+    pub signature: Option<String>,
+    /// Used for signature verification; not sent to the frontend.
+    #[serde(default, skip_serializing)]
+    pub steps: Vec<PlaybookStep>,
 }
 
 /// Standard API response envelope

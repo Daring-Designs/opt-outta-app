@@ -1,5 +1,6 @@
-use crate::models::{ChangelogEntry, LocalPlaybook, PlaybookReportEntry, PlaybookSubmission, PlaybookSubmitResponse, PlaybookSummary, Playbook, RecordedAction, TrackedSubmission};
+use crate::models::{ChangelogEntry, LocalPlaybook, Playbook, PlaybookReportEntry, PlaybookSubmission, PlaybookSubmitResponse, PlaybookSummary, RecordedAction, TrackedSubmission};
 use crate::playbook_api;
+use crate::playbook_verification;
 use crate::recorder::RecorderState;
 use crate::submission_tracker;
 
@@ -47,12 +48,44 @@ pub async fn mark_user_prompt_step(
 
 #[tauri::command]
 pub async fn fetch_playbooks(broker_id: String) -> Result<Vec<PlaybookSummary>, String> {
-    playbook_api::fetch_playbooks(&broker_id).await
+    let summaries = playbook_api::fetch_playbooks(&broker_id).await?;
+
+    // Filter out playbooks that fail signature verification.
+    // Build a temporary Playbook to reuse the verification function.
+    let verified: Vec<PlaybookSummary> = summaries
+        .into_iter()
+        .filter(|s| {
+            if s.steps.is_empty() || s.signature.is_none() {
+                return false;
+            }
+            let pb = Playbook {
+                id: s.id.clone(),
+                broker_id: s.broker_id.clone(),
+                broker_name: s.broker_name.clone(),
+                title: s.title.clone(),
+                version: s.version,
+                status: "approved".to_string(),
+                notes: s.notes.clone(),
+                steps: s.steps.clone(),
+                signature: s.signature.clone(),
+                upvotes: s.upvotes,
+                downvotes: s.downvotes,
+                success_count: s.success_count,
+                failure_count: s.failure_count,
+                created_at: s.created_at.clone(),
+            };
+            playbook_verification::verify_playbook_signature(&pb).is_ok()
+        })
+        .collect();
+
+    Ok(verified)
 }
 
 #[tauri::command]
 pub async fn fetch_playbook_detail(id: String) -> Result<Playbook, String> {
-    playbook_api::fetch_playbook_detail(&id).await
+    let playbook = playbook_api::fetch_playbook_detail(&id).await?;
+    playbook_verification::verify_playbook_signature(&playbook)?;
+    Ok(playbook)
 }
 
 #[tauri::command]
