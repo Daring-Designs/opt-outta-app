@@ -59,6 +59,10 @@ pub fn verify_playbook_signature(playbook: &Playbook) -> Result<(), String> {
     let canonical_json = serde_json::to_string(&canonical_steps)
         .map_err(|e| format!("Failed to serialize canonical steps: {}", e))?;
 
+    // The server (PHP) escapes forward slashes as \/ in json_encode.
+    // Match that behavior so the signed bytes are identical.
+    let canonical_json = canonical_json.replace("/", "\\/");
+
     PLAYBOOK_PUBLIC_KEY
         .verify_strict(canonical_json.as_bytes(), &signature)
         .map_err(|_| "Playbook signature verification failed".to_string())
