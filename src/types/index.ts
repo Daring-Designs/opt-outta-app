@@ -176,6 +176,16 @@ export interface RecordedAction {
   timestamp: number;
 }
 
+// --- Submission Tracker types ---
+
+export interface TrackedSubmission {
+  playbook_id: string;
+  broker_id: string;
+  broker_name: string;
+  status: string;
+  submitted_at: string;
+}
+
 export type RecordingStatus = "idle" | "recording" | "reviewing" | "submitting";
 
 export interface PlaybookSubmission {

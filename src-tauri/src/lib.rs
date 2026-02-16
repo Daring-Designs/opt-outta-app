@@ -10,6 +10,7 @@ mod playbook_verification;
 mod playbook_api;
 mod recorder;
 mod secrets;
+mod submission_tracker;
 
 use commands::{brokers, history as history_cmd, optout, playbooks, profile};
 use engine::EngineState;
@@ -66,6 +67,12 @@ pub fn run() {
             playbooks::save_local_playbook,
             playbooks::get_local_playbooks,
             playbooks::delete_local_playbook,
+            // Submission tracker
+            playbooks::track_submission,
+            playbooks::get_tracked_submissions,
+            playbooks::refresh_submission_statuses,
+            // Broker suggestions
+            playbooks::suggest_broker,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

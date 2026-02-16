@@ -5,9 +5,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 const API_BASE: &str = "https://opt-outta.com/api/v1";
 
-/// Ed25519 signing key, loaded from env at compile time.
+/// Ed25519 signing key, embedded at compile time via `API_PRIVATE_KEY` env var.
+/// Falls back to a dummy key for local dev builds (API calls will be rejected by the server).
 static SIGNING_KEY: std::sync::LazyLock<SigningKey> = std::sync::LazyLock::new(|| {
-    let key_b64 = env!("API_PRIVATE_KEY");
+    let key_b64 = option_env!("API_PRIVATE_KEY")
+        .unwrap_or("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
     let key_bytes = STANDARD.decode(key_b64).expect("API_PRIVATE_KEY must be valid base64");
     let key_array: [u8; 32] = key_bytes
         .try_into()
@@ -211,6 +213,49 @@ pub async fn vote_playbook(id: &str, vote: &str) -> Result<(), String> {
         let status = response.status();
         let resp_body = response.text().await.unwrap_or_default();
         return Err(format!("Vote error ({}): {}", status, resp_body));
+    }
+
+    Ok(())
+}
+
+/// Check the current status of a submitted playbook.
+pub async fn check_playbook_status(id: &str) -> Result<String, String> {
+    let url = format!("{}/playbooks/{}", API_BASE, id);
+
+    let response = signed_get(&url).await?;
+
+    if !response.status().is_success() {
+        return Err(format!("Status check failed ({})", response.status()));
+    }
+
+    let envelope: ApiEnvelope<Playbook> = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse playbook: {}", e))?;
+
+    Ok(envelope.data.status)
+}
+
+/// Suggest a new broker to be added to the registry.
+pub async fn suggest_broker(name: &str, url: &str, notes: &str) -> Result<(), String> {
+    let api_url = format!("{}/broker-suggestions", API_BASE);
+    let device_id = get_device_id();
+
+    let body_value = serde_json::json!({
+        "device_id": device_id,
+        "name": name,
+        "url": url,
+        "notes": notes,
+    });
+    let body = serde_json::to_string(&body_value)
+        .map_err(|e| format!("Failed to serialize suggestion: {}", e))?;
+
+    let response = signed_post(&api_url, &body).await?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let resp_body = response.text().await.unwrap_or_default();
+        return Err(format!("Suggestion error ({}): {}", status, resp_body));
     }
 
     Ok(())

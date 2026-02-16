@@ -373,6 +373,24 @@ pub struct LocalPlaybookStore {
     pub playbooks: Vec<LocalPlaybook>,
 }
 
+// --- Submission Tracker types ---
+
+/// Tracks a playbook the user submitted to the community
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TrackedSubmission {
+    pub playbook_id: String,
+    pub broker_id: String,
+    pub broker_name: String,
+    pub status: String,
+    pub submitted_at: String,
+}
+
+/// Storage wrapper for tracked submissions
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct SubmissionTrackerStore {
+    pub submissions: Vec<TrackedSubmission>,
+}
+
 /// A single recorded user action during recording mode
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RecordedAction {

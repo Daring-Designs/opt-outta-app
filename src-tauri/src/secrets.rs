@@ -6,9 +6,6 @@ use std::sync::Mutex;
 const SERVICE_NAME: &str = "opt-outta";
 const SECRETS_ENTRY: &str = "secrets";
 
-// Legacy entries (for migration from separate keychain items)
-const LEGACY_ENCRYPTION_KEY_ENTRY: &str = "encryption-key";
-
 #[derive(Serialize, Deserialize)]
 struct StoredSecrets {
     encryption_key: String, // base64-encoded AES-256 key
@@ -31,8 +28,7 @@ impl SecretsCache {
         }))
     }
 
-    /// Load secrets from keychain into memory. Migrates from legacy
-    /// per-secret entries to a single combined entry on first run.
+    /// Load secrets from keychain into memory.
     pub fn load(&self) -> Result<(), String> {
         let mut inner = self.0.lock().unwrap();
         if inner.loaded {
@@ -45,7 +41,16 @@ impl SecretsCache {
         let stored = match entry.get_password() {
             Ok(json) => serde_json::from_str::<StoredSecrets>(&json)
                 .map_err(|e| format!("Failed to parse secrets: {}", e))?,
-            Err(keyring::Error::NoEntry) => migrate_legacy(&entry)?,
+            Err(keyring::Error::NoEntry) => {
+                let mut key = vec![0u8; 32];
+                rand::thread_rng().fill_bytes(&mut key);
+                let stored = StoredSecrets {
+                    encryption_key: BASE64.encode(&key),
+                };
+                let json = serde_json::to_string(&stored).map_err(|e| e.to_string())?;
+                entry.set_password(&json).map_err(|e| e.to_string())?;
+                stored
+            }
             Err(e) => return Err(e.to_string()),
         };
 
@@ -63,36 +68,4 @@ impl SecretsCache {
         }
         Ok(inner.encryption_key.clone())
     }
-}
-
-/// Migrate from legacy separate keychain entries to a single combined entry.
-fn migrate_legacy(new_entry: &keyring::Entry) -> Result<StoredSecrets, String> {
-    // Try to read legacy encryption key
-    let enc_key_b64 = {
-        let legacy =
-            keyring::Entry::new(SERVICE_NAME, LEGACY_ENCRYPTION_KEY_ENTRY)
-                .map_err(|e| e.to_string())?;
-        match legacy.get_password() {
-            Ok(key) => key,
-            Err(keyring::Error::NoEntry) => {
-                // Fresh install — generate new key
-                let mut key = vec![0u8; 32];
-                rand::thread_rng().fill_bytes(&mut key);
-                BASE64.encode(&key)
-            }
-            Err(e) => return Err(e.to_string()),
-        }
-    };
-
-    let stored = StoredSecrets {
-        encryption_key: enc_key_b64,
-    };
-
-    // Save to new combined entry
-    let json = serde_json::to_string(&stored).map_err(|e| e.to_string())?;
-    new_entry
-        .set_password(&json)
-        .map_err(|e| e.to_string())?;
-
-    Ok(stored)
 }

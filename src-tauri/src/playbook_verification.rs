@@ -2,9 +2,12 @@ use crate::models::Playbook;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use ed25519_dalek::{Signature, VerifyingKey};
 
-/// Ed25519 public key for verifying community playbook signatures.
+/// Ed25519 public key for verifying community playbook signatures, embedded at
+/// compile time via `PLAYBOOK_PUBLIC_KEY` env var. Falls back to a dummy key
+/// for local dev builds (signature verification will always fail).
 static PLAYBOOK_PUBLIC_KEY: std::sync::LazyLock<VerifyingKey> = std::sync::LazyLock::new(|| {
-    let key_b64 = env!("PLAYBOOK_PUBLIC_KEY");
+    let key_b64 = option_env!("PLAYBOOK_PUBLIC_KEY")
+        .unwrap_or("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
     let key_bytes = STANDARD.decode(key_b64).expect("PLAYBOOK_PUBLIC_KEY must be valid base64");
     let key_array: [u8; 32] = key_bytes
         .try_into()

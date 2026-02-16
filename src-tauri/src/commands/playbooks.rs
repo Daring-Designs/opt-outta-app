@@ -1,6 +1,7 @@
-use crate::models::{LocalPlaybook, PlaybookSubmission, PlaybookSubmitResponse, PlaybookSummary, Playbook, RecordedAction};
+use crate::models::{LocalPlaybook, PlaybookSubmission, PlaybookSubmitResponse, PlaybookSummary, Playbook, RecordedAction, TrackedSubmission};
 use crate::playbook_api;
 use crate::recorder::RecorderState;
+use crate::submission_tracker;
 
 // --- Recording commands ---
 
@@ -105,4 +106,49 @@ pub async fn delete_local_playbook(
     id: String,
 ) -> Result<(), String> {
     crate::local_playbooks::delete(&app, &id)
+}
+
+// --- Submission tracker commands ---
+
+#[tauri::command]
+pub async fn track_submission(
+    app: tauri::AppHandle,
+    submission: TrackedSubmission,
+) -> Result<(), String> {
+    submission_tracker::track(&app, submission)
+}
+
+#[tauri::command]
+pub async fn get_tracked_submissions(
+    app: tauri::AppHandle,
+) -> Result<Vec<TrackedSubmission>, String> {
+    submission_tracker::get_all(&app)
+}
+
+#[tauri::command]
+pub async fn refresh_submission_statuses(
+    app: tauri::AppHandle,
+) -> Result<Vec<TrackedSubmission>, String> {
+    let subs = submission_tracker::get_all(&app)?;
+    for sub in &subs {
+        if sub.status == "pending_review" {
+            if let Ok(new_status) = playbook_api::check_playbook_status(&sub.playbook_id).await {
+                if new_status != sub.status {
+                    let _ = submission_tracker::update_status(&app, &sub.playbook_id, &new_status);
+                }
+            }
+        }
+    }
+    submission_tracker::get_all(&app)
+}
+
+// --- Broker suggestion command ---
+
+#[tauri::command]
+pub async fn suggest_broker(
+    name: String,
+    url: String,
+    notes: String,
+) -> Result<(), String> {
+    playbook_api::suggest_broker(&name, &url, &notes).await
 }

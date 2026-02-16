@@ -9,6 +9,7 @@ import type {
   LocalPlaybook,
   RecordingStatus,
   PlaybookSubmission,
+  TrackedSubmission,
 } from "../types";
 
 export const usePlaybooksStore = defineStore("playbooks", () => {
@@ -32,6 +33,13 @@ export const usePlaybooksStore = defineStore("playbooks", () => {
   // Local playbook state
   const localPlaybooks = ref<LocalPlaybook[]>([]);
   const editingLocalId = ref<string | null>(null);
+
+  // Submission tracker state
+  const trackedSubmissions = ref<TrackedSubmission[]>([]);
+  const hasSubmitted = computed(() => trackedSubmissions.value.length > 0);
+  const hasApproved = computed(() =>
+    trackedSubmissions.value.some((s) => s.status === "approved")
+  );
 
   const isRecording = computed(() => recordingStatus.value === "recording");
   const isReviewing = computed(() => recordingStatus.value === "reviewing");
@@ -284,6 +292,18 @@ export const usePlaybooksStore = defineStore("playbooks", () => {
         "submit_playbook",
         { submission }
       );
+
+      // Track the submission locally
+      const tracked: TrackedSubmission = {
+        playbook_id: result.id,
+        broker_id: recordingBrokerId.value!,
+        broker_name: recordingBrokerName.value!,
+        status: result.status,
+        submitted_at: new Date().toISOString(),
+      };
+      await invoke("track_submission", { submission: tracked });
+      trackedSubmissions.value = [...trackedSubmissions.value, tracked];
+
       resetRecording();
       return result.message;
     } catch (e) {
@@ -400,6 +420,24 @@ export const usePlaybooksStore = defineStore("playbooks", () => {
     return localPlaybooks.value.filter((p) => p.brokerId === brokerId);
   }
 
+  // --- Submission tracker ---
+
+  async function loadTrackedSubmissions() {
+    try {
+      trackedSubmissions.value = await invoke<TrackedSubmission[]>("get_tracked_submissions");
+    } catch {
+      // Non-fatal
+    }
+  }
+
+  async function refreshSubmissionStatuses() {
+    try {
+      trackedSubmissions.value = await invoke<TrackedSubmission[]>("refresh_submission_statuses");
+    } catch {
+      // Non-fatal — API may be unreachable
+    }
+  }
+
   return {
     // Recording state
     recordingStatus,
@@ -436,6 +474,12 @@ export const usePlaybooksStore = defineStore("playbooks", () => {
     localPlaybooks,
     editingLocalId,
     loadLocalPlaybooks,
+    // Submission tracker
+    trackedSubmissions,
+    hasSubmitted,
+    hasApproved,
+    loadTrackedSubmissions,
+    refreshSubmissionStatuses,
     saveLocally,
     updateLocalPlaybook,
     deleteLocalPlaybook,
