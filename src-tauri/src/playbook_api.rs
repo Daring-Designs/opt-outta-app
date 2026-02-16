@@ -23,24 +23,35 @@ fn api_base() -> &'static str {
 
 /// Ed25519 signing key, embedded at compile time via `API_PRIVATE_KEY` env var.
 /// Falls back to a dummy key for local dev builds (API calls will be rejected by the server).
-static SIGNING_KEY: std::sync::LazyLock<SigningKey> = std::sync::LazyLock::new(|| {
-    let key_b64 = option_env!("API_PRIVATE_KEY")
-        .unwrap_or("mDtbMauvCa/sJUI1HAQOLRPGqCg+D09JDI4g6AFnML6N7jL91TAk/LCAXW1ahl8AgYhf+7T6vr7XvlE5Df5Y0g==");
-    let key_bytes = STANDARD.decode(key_b64).expect("API_PRIVATE_KEY must be valid base64");
-    // Sodium secret keys are 64 bytes (32-byte seed + 32-byte public key).
-    // ed25519-dalek expects just the 32-byte seed.
-    let seed: [u8; 32] = key_bytes[..32]
-        .try_into()
-        .expect("API_PRIVATE_KEY must be at least 32 bytes");
-    SigningKey::from_bytes(&seed)
-});
+/// Stores a Result to avoid panics on invalid keys (which would hang Tauri commands).
+static SIGNING_KEY: std::sync::LazyLock<Result<SigningKey, String>> =
+    std::sync::LazyLock::new(|| {
+        let key_b64 = match option_env!("API_PRIVATE_KEY") {
+            Some(k) if !k.is_empty() => k,
+            _ => "mDtbMauvCa/sJUI1HAQOLRPGqCg+D09JDI4g6AFnML6N7jL91TAk/LCAXW1ahl8AgYhf+7T6vr7XvlE5Df5Y0g==",
+        };
+        let key_bytes = STANDARD
+            .decode(key_b64)
+            .map_err(|e| format!("API_PRIVATE_KEY is not valid base64: {e}"))?;
+        // Sodium secret keys are 64 bytes (32-byte seed + 32-byte public key).
+        // ed25519-dalek expects just the 32-byte seed.
+        if key_bytes.len() < 32 {
+            return Err("API_PRIVATE_KEY must be at least 32 bytes".to_string());
+        }
+        let seed: [u8; 32] = key_bytes[..32].try_into().unwrap();
+        Ok(SigningKey::from_bytes(&seed))
+    });
 
 // ---------------------------------------------------------------------------
 // Ed25519 request signing
 // ---------------------------------------------------------------------------
 
 /// Compute the X-Signature and X-Timestamp headers for a request.
-fn sign_request(method: &str, path: &str, body: &str) -> (String, String) {
+fn sign_request(method: &str, path: &str, body: &str) -> Result<(String, String), String> {
+    let key = SIGNING_KEY
+        .as_ref()
+        .map_err(|e| format!("Signing key error: {e}"))?;
+
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
@@ -49,10 +60,10 @@ fn sign_request(method: &str, path: &str, body: &str) -> (String, String) {
 
     let string_to_sign = format!("{}\n{}\n{}\n{}", timestamp, method, path, body);
 
-    let signature = SIGNING_KEY.sign(string_to_sign.as_bytes());
+    let signature = key.sign(string_to_sign.as_bytes());
     let sig_b64 = STANDARD.encode(signature.to_bytes());
 
-    (sig_b64, timestamp)
+    Ok((sig_b64, timestamp))
 }
 
 /// Extract the path (+ query string) from a full URL.
@@ -90,7 +101,7 @@ async fn signed_get(url: &str) -> Result<reqwest::Response, String> {
         req = req.header("Authorization", format!("Bearer {}", SANDBOX_TOKEN));
     } else {
         let path = url_path(url);
-        let (signature, timestamp) = sign_request("GET", &path, "");
+        let (signature, timestamp) = sign_request("GET", &path, "")?;
         req = req.header("X-Signature", signature).header("X-Timestamp", timestamp);
     }
 
@@ -114,7 +125,7 @@ async fn signed_post(url: &str, body: &str) -> Result<reqwest::Response, String>
         req = req.header("Authorization", format!("Bearer {}", SANDBOX_TOKEN));
     } else {
         let path = url_path(url);
-        let (signature, timestamp) = sign_request("POST", &path, body);
+        let (signature, timestamp) = sign_request("POST", &path, body)?;
         req = req.header("X-Signature", signature).header("X-Timestamp", timestamp);
     }
 

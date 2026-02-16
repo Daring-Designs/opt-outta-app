@@ -4,15 +4,22 @@ use ed25519_dalek::{Signature, VerifyingKey};
 
 /// Ed25519 public key for verifying community playbook signatures.
 /// Release builds can override via `PLAYBOOK_PUBLIC_KEY` env var at compile time.
-static PLAYBOOK_PUBLIC_KEY: std::sync::LazyLock<VerifyingKey> = std::sync::LazyLock::new(|| {
-    let key_b64 = option_env!("PLAYBOOK_PUBLIC_KEY")
-        .unwrap_or("AsWpThdraJZ589wFqx/wHkFAnl0GY7kRjATEFoaSBCg=");
-    let key_bytes = STANDARD.decode(key_b64).expect("PLAYBOOK_PUBLIC_KEY must be valid base64");
-    let key_array: [u8; 32] = key_bytes
-        .try_into()
-        .expect("PLAYBOOK_PUBLIC_KEY must decode to exactly 32 bytes");
-    VerifyingKey::from_bytes(&key_array).expect("PLAYBOOK_PUBLIC_KEY must be a valid Ed25519 public key")
-});
+/// Stores a Result to avoid panics on invalid keys (which would hang Tauri commands).
+static PLAYBOOK_PUBLIC_KEY: std::sync::LazyLock<Result<VerifyingKey, String>> =
+    std::sync::LazyLock::new(|| {
+        let key_b64 = match option_env!("PLAYBOOK_PUBLIC_KEY") {
+            Some(k) if !k.is_empty() => k,
+            _ => "AsWpThdraJZ589wFqx/wHkFAnl0GY7kRjATEFoaSBCg=",
+        };
+        let key_bytes = STANDARD
+            .decode(key_b64)
+            .map_err(|e| format!("PLAYBOOK_PUBLIC_KEY is not valid base64: {e}"))?;
+        let key_array: [u8; 32] = key_bytes
+            .try_into()
+            .map_err(|_| "PLAYBOOK_PUBLIC_KEY must decode to exactly 32 bytes".to_string())?;
+        VerifyingKey::from_bytes(&key_array)
+            .map_err(|e| format!("PLAYBOOK_PUBLIC_KEY is not a valid Ed25519 public key: {e}"))
+    });
 
 /// Verify the Ed25519 signature on a community playbook.
 ///
@@ -63,8 +70,11 @@ pub fn verify_playbook_signature(playbook: &Playbook) -> Result<(), String> {
     // Match that behavior so the signed bytes are identical.
     let canonical_json = canonical_json.replace("/", "\\/");
 
-    PLAYBOOK_PUBLIC_KEY
-        .verify_strict(canonical_json.as_bytes(), &signature)
+    let key = PLAYBOOK_PUBLIC_KEY
+        .as_ref()
+        .map_err(|e| format!("Playbook key error: {e}"))?;
+
+    key.verify_strict(canonical_json.as_bytes(), &signature)
         .map_err(|_| "Playbook signature verification failed".to_string())
 }
 
