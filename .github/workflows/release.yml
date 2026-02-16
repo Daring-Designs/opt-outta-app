@@ -87,12 +87,9 @@ jobs:
           PLAYBOOK_PUBLIC_KEY: ${{ secrets.PLAYBOOK_PUBLIC_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
         run: |
-          # GitHub secrets wrap long base64 lines; reconstruct as two-line minisign key
-          FIRST_LINE=$(echo "$_RAW_KEY" | head -n 1)
-          REST=$(echo "$_RAW_KEY" | tail -n +2 | tr -d '\n\r\t ')
-          printf -v TAURI_SIGNING_PRIVATE_KEY '%s\n%s' "$FIRST_LINE" "$REST"
-          export TAURI_SIGNING_PRIVATE_KEY
-          echo "Signing key: line1=${#FIRST_LINE} chars, line2=${#REST} chars"
+          # Strip any newlines GitHub may have injected into the base64 key
+          export TAURI_SIGNING_PRIVATE_KEY=$(printf '%s' "$_RAW_KEY" | tr -d '\n\r')
+          echo "Signing key length: ${#TAURI_SIGNING_PRIVATE_KEY} chars"
           npx tauri build --target ${{ matrix.target }}
 
       - name: Upload assets and collect sigs
