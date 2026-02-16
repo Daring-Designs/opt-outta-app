@@ -1,4 +1,4 @@
-use crate::models::{ApiEnvelope, Playbook, PlaybookReport, PlaybookSubmission, PlaybookSubmitResponse, PlaybookSummary};
+use crate::models::{ApiEnvelope, BrokerRegistry, ChangelogEntry, Playbook, PlaybookReport, PlaybookReportEntry, PlaybookSubmission, PlaybookSubmitResponse, PlaybookSummary, RegistryVersionResponse};
 use ed25519_dalek::{SigningKey, Signer};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -271,6 +271,82 @@ pub async fn suggest_broker(name: &str, url: &str, notes: &str) -> Result<(), St
     }
 
     Ok(())
+}
+
+/// Fetch the current registry version from the API.
+pub async fn fetch_registry_version() -> Result<String, String> {
+    let url = format!("{}/registry/version", API_BASE);
+    let response = signed_get(&url).await?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!("Registry version error ({}): {}", status, body));
+    }
+
+    let envelope: ApiEnvelope<RegistryVersionResponse> = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse registry version: {}", e))?;
+
+    Ok(envelope.data.version)
+}
+
+/// Fetch the full broker registry from the API.
+pub async fn fetch_registry() -> Result<BrokerRegistry, String> {
+    let url = format!("{}/registry", API_BASE);
+    let response = signed_get(&url).await?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!("Registry fetch error ({}): {}", status, body));
+    }
+
+    let envelope: ApiEnvelope<BrokerRegistry> = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse registry: {}", e))?;
+
+    Ok(envelope.data)
+}
+
+/// Fetch the app changelog.
+pub async fn fetch_changelog() -> Result<Vec<ChangelogEntry>, String> {
+    let url = format!("{}/changelog", API_BASE);
+    let response = signed_get(&url).await?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!("Changelog error ({}): {}", status, body));
+    }
+
+    let envelope: ApiEnvelope<Vec<ChangelogEntry>> = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse changelog: {}", e))?;
+
+    Ok(envelope.data)
+}
+
+/// Fetch community execution reports for a playbook.
+pub async fn fetch_playbook_reports(playbook_id: &str) -> Result<Vec<PlaybookReportEntry>, String> {
+    let url = format!("{}/playbooks/{}/reports", API_BASE, playbook_id);
+    let response = signed_get(&url).await?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!("Playbook reports error ({}): {}", status, body));
+    }
+
+    let envelope: ApiEnvelope<Vec<PlaybookReportEntry>> = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse playbook reports: {}", e))?;
+
+    Ok(envelope.data)
 }
 
 /// Report the outcome of running a playbook.

@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { invoke } from "@tauri-apps/api/core";
 import { usePlaybooksStore } from "../stores/playbooks";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronUp, ChevronDown } from "lucide-vue-next";
+import type { PlaybookReportEntry } from "../types";
 
 const route = useRoute();
 const router = useRouter();
@@ -11,6 +13,8 @@ const playbooksStore = usePlaybooksStore();
 
 const loading = ref(true);
 const error = ref<string | null>(null);
+const reports = ref<PlaybookReportEntry[]>([]);
+const reportsLoading = ref(false);
 
 const playbook = computed(() => playbooksStore.selectedPlaybook);
 
@@ -18,6 +22,12 @@ onMounted(async () => {
   const id = route.params.id as string;
   try {
     await playbooksStore.fetchPlaybookDetail(id);
+    // Fetch reports in parallel (fire-and-forget style for loading state)
+    reportsLoading.value = true;
+    invoke<PlaybookReportEntry[]>("fetch_playbook_reports", { id })
+      .then((r) => { reports.value = r; })
+      .catch(() => { /* silently ignore report fetch failures */ })
+      .finally(() => { reportsLoading.value = false; });
   } catch (e) {
     error.value = String(e);
   } finally {
@@ -205,6 +215,59 @@ async function handleVote(vote: "up" | "down") {
                   </p>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Community Reports -->
+      <div class="mt-8">
+        <h2 class="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">Community Reports</h2>
+
+        <div v-if="reportsLoading" class="text-sm text-muted-foreground">
+          Loading reports...
+        </div>
+
+        <div v-else-if="reports.length === 0" class="text-sm text-muted-foreground">
+          No community reports yet.
+        </div>
+
+        <div v-else class="space-y-2">
+          <div
+            v-for="(report, idx) in reports"
+            :key="idx"
+            class="rounded-lg border border-border bg-card p-3"
+          >
+            <div class="flex items-center gap-3">
+              <!-- Outcome badge -->
+              <span
+                class="rounded-full px-2 py-0.5 text-xs font-medium"
+                :class="report.outcome === 'success'
+                  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                  : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'"
+              >
+                {{ report.outcome }}
+              </span>
+
+              <!-- Date -->
+              <span class="text-xs text-muted-foreground">
+                {{ report.created_at.slice(0, 10) }}
+              </span>
+
+              <!-- App version -->
+              <span class="font-mono text-xs text-muted-foreground">
+                v{{ report.app_version }}
+              </span>
+            </div>
+
+            <!-- Failure details -->
+            <div v-if="report.outcome !== 'success'" class="mt-1.5 space-y-0.5">
+              <p v-if="report.failure_step != null" class="text-xs text-muted-foreground">
+                Failed at step <span class="font-medium text-foreground">{{ report.failure_step }}</span>
+              </p>
+              <p v-if="report.error_message" class="text-xs text-destructive">
+                {{ report.error_message }}
+              </p>
             </div>
           </div>
         </div>

@@ -9,6 +9,7 @@ mod playbook_validation;
 mod playbook_verification;
 mod playbook_api;
 mod recorder;
+mod registry_cache;
 mod secrets;
 mod submission_tracker;
 
@@ -42,6 +43,7 @@ pub fn run() {
             profile::delete_profile,
             // Brokers
             brokers::get_brokers,
+            brokers::sync_registry,
             // Opt-out
             optout::check_chrome_installed,
             optout::start_opt_out_run,
@@ -72,6 +74,10 @@ pub fn run() {
             playbooks::track_submission,
             playbooks::get_tracked_submissions,
             playbooks::refresh_submission_statuses,
+            // Changelog
+            playbooks::fetch_changelog,
+            // Playbook reports
+            playbooks::fetch_playbook_reports,
             // Broker suggestions
             playbooks::suggest_broker,
         ])

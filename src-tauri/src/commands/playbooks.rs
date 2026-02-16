@@ -1,4 +1,4 @@
-use crate::models::{LocalPlaybook, PlaybookSubmission, PlaybookSubmitResponse, PlaybookSummary, Playbook, RecordedAction, TrackedSubmission};
+use crate::models::{ChangelogEntry, LocalPlaybook, PlaybookReportEntry, PlaybookSubmission, PlaybookSubmitResponse, PlaybookSummary, Playbook, RecordedAction, TrackedSubmission};
 use crate::playbook_api;
 use crate::recorder::RecorderState;
 use crate::submission_tracker;
@@ -147,6 +147,20 @@ pub async fn refresh_submission_statuses(
         }
     }
     submission_tracker::get_all(&app)
+}
+
+// --- Changelog command ---
+
+#[tauri::command]
+pub async fn fetch_changelog() -> Result<Vec<ChangelogEntry>, String> {
+    playbook_api::fetch_changelog().await
+}
+
+// --- Playbook reports command ---
+
+#[tauri::command]
+pub async fn fetch_playbook_reports(id: String) -> Result<Vec<PlaybookReportEntry>, String> {
+    playbook_api::fetch_playbook_reports(&id).await
 }
 
 // --- Broker suggestion command ---

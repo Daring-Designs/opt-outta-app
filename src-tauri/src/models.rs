@@ -401,6 +401,36 @@ pub struct SubmissionTrackerStore {
     pub submissions: Vec<TrackedSubmission>,
 }
 
+// --- Registry Sync types ---
+
+/// Response from GET /registry/version
+#[derive(Debug, Deserialize)]
+pub struct RegistryVersionResponse {
+    pub version: String,
+}
+
+// --- Changelog types ---
+
+/// A single changelog entry from GET /changelog
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ChangelogEntry {
+    pub version: String,
+    pub date: String,
+    pub description: String,
+}
+
+// --- Playbook Report types ---
+
+/// A single execution report from GET /playbooks/{id}/reports
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PlaybookReportEntry {
+    pub outcome: String,
+    pub failure_step: Option<u32>,
+    pub error_message: Option<String>,
+    pub app_version: String,
+    pub created_at: String,
+}
+
 /// A single recorded user action during recording mode
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RecordedAction {

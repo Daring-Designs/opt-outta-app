@@ -192,6 +192,24 @@ export interface TrackedSubmission {
   local_playbook_id: string | null;
 }
 
+// --- Changelog types ---
+
+export interface ChangelogEntry {
+  version: string;
+  date: string;
+  description: string;
+}
+
+// --- Playbook Report types ---
+
+export interface PlaybookReportEntry {
+  outcome: string;
+  failure_step: number | null;
+  error_message: string | null;
+  app_version: string;
+  created_at: string;
+}
+
 export type RecordingStatus = "idle" | "recording" | "reviewing" | "submitting";
 
 export interface PlaybookSubmission {

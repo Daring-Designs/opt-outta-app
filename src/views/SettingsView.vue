@@ -1,17 +1,36 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
+import { invoke } from "@tauri-apps/api/core";
 import { useProfileStore } from "../stores/profile";
 import { useThemeStore, type ThemeMode } from "../stores/theme";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Sun, Moon, Monitor, Download, RefreshCw, CheckCircle, AlertCircle, Loader2 } from "lucide-vue-next";
+import { Sun, Moon, Monitor, Download, RefreshCw, CheckCircle, AlertCircle, Loader2, FileText } from "lucide-vue-next";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { getVersion } from "@tauri-apps/api/app";
+import type { ChangelogEntry } from "../types";
 
 const profileStore = useProfileStore();
 const themeStore = useThemeStore();
 
 const confirmDelete = ref(false);
+
+// Changelog state
+const changelogStatus = ref<"idle" | "loading" | "loaded" | "error">("idle");
+const changelogEntries = ref<ChangelogEntry[]>([]);
+const changelogError = ref("");
+
+async function fetchChangelog() {
+  changelogStatus.value = "loading";
+  changelogError.value = "";
+  try {
+    changelogEntries.value = await invoke<ChangelogEntry[]>("fetch_changelog");
+    changelogStatus.value = "loaded";
+  } catch (e) {
+    changelogStatus.value = "error";
+    changelogError.value = e instanceof Error ? e.message : String(e);
+  }
+}
 
 // Update state
 const appVersion = ref("");
@@ -166,6 +185,57 @@ async function deleteAllData() {
             <span>{{ updateError }}</span>
           </div>
           <Button variant="outline" size="sm" @click="checkForUpdates">
+            <RefreshCw class="mr-2 h-4 w-4" />
+            Retry
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+
+    <!-- What's New -->
+    <Card class="mb-6">
+      <CardHeader>
+        <CardTitle class="text-base">What's New</CardTitle>
+        <CardDescription>See what changed in recent releases.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <!-- Idle -->
+        <Button v-if="changelogStatus === 'idle'" variant="outline" @click="fetchChangelog">
+          <FileText class="mr-2 h-4 w-4" />
+          View Changelog
+        </Button>
+
+        <!-- Loading -->
+        <div v-else-if="changelogStatus === 'loading'" class="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 class="h-4 w-4 animate-spin" />
+          Loading changelog...
+        </div>
+
+        <!-- Loaded -->
+        <div v-else-if="changelogStatus === 'loaded'" class="space-y-3">
+          <div v-if="changelogEntries.length === 0" class="text-sm text-muted-foreground">
+            No changelog entries available.
+          </div>
+          <div
+            v-for="entry in changelogEntries"
+            :key="entry.version"
+            class="rounded-lg border border-border p-3"
+          >
+            <div class="flex items-center gap-2">
+              <span class="font-mono text-sm font-medium">{{ entry.version }}</span>
+              <span class="text-xs text-muted-foreground">{{ entry.date }}</span>
+            </div>
+            <p class="mt-1 text-sm text-muted-foreground">{{ entry.description }}</p>
+          </div>
+        </div>
+
+        <!-- Error -->
+        <div v-else-if="changelogStatus === 'error'" class="space-y-2">
+          <div class="flex items-center gap-2 text-sm text-destructive">
+            <AlertCircle class="h-4 w-4" />
+            <span>{{ changelogError }}</span>
+          </div>
+          <Button variant="outline" size="sm" @click="fetchChangelog">
             <RefreshCw class="mr-2 h-4 w-4" />
             Retry
           </Button>

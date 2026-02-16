@@ -38,6 +38,21 @@ export const useBrokersStore = defineStore("brokers", () => {
     } finally {
       loading.value = false;
     }
+    // Fire-and-forget sync with remote registry
+    syncRegistry();
+  }
+
+  async function syncRegistry() {
+    try {
+      const updated = await invoke<boolean>("sync_registry");
+      if (updated) {
+        const registry = await invoke<BrokerRegistry>("get_brokers");
+        brokers.value = registry.brokers;
+        version.value = registry.version;
+      }
+    } catch (e) {
+      console.error("Registry sync failed:", e);
+    }
   }
 
   return {
@@ -49,5 +64,6 @@ export const useBrokersStore = defineStore("brokers", () => {
     filteredBrokers,
     categories,
     loadBrokers,
+    syncRegistry,
   };
 });
