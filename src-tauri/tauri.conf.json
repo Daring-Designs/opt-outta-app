@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicegui/nicegui-tauri/main/tauri-v2-schema.json",
   "productName": "Opt-Outta",
-  "version": "0.1.18",
+  "version": "0.1.19",
   "identifier": "com.optoutta.desktop",
   "build": {
     "frontendDist": "../dist",

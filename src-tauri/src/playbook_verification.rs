@@ -51,7 +51,7 @@ pub fn verify_playbook_signature(playbook: &Playbook) -> Result<(), String> {
                 "profile_key": step.profile_key,
                 "selector": step.selector,
                 "value": step.value,
-                "wait_after_ms": null
+                "wait_after_ms": step.wait_after_ms
             })
         })
         .collect();
