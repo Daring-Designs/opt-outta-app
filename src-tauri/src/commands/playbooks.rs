@@ -78,7 +78,7 @@ pub async fn report_playbook_outcome(
         outcome,
         failure_step,
         error_message,
-        app_version: "0.1.0".to_string(),
+        app_version: env!("CARGO_PKG_VERSION").to_string(),
     };
     playbook_api::report_outcome(&id, &report).await
 }

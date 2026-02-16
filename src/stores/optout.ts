@@ -2,6 +2,7 @@ import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { toast } from "vue-sonner";
 import type {
   RunStatus,
   OptOutProgress,
@@ -74,6 +75,11 @@ export const useOptOutStore = defineStore("optout", () => {
       actionRequired.value = p.action_required;
       error.value = p.error;
 
+      // Show toast for broker-level errors
+      if (p.error) {
+        toast.error(p.broker_name, { description: p.error });
+      }
+
       // Track per-broker state
       brokerProgress.value.set(p.broker_id, {
         name: p.broker_name,
@@ -103,6 +109,16 @@ export const useOptOutStore = defineStore("optout", () => {
         }
       }
 
+      // Show summary toast
+      const r = event.payload;
+      if (r.failed > 0 && r.succeeded === 0) {
+        toast.error("Run failed", { description: `${r.failed} of ${r.total} brokers failed` });
+      } else if (r.failed > 0) {
+        toast.warning("Run completed with errors", { description: `${r.succeeded} succeeded, ${r.failed} failed` });
+      } else {
+        toast.success("Run complete", { description: `${r.succeeded} of ${r.total} brokers succeeded` });
+      }
+
       // Reload history so dashboard/brokers views reflect new data
       import("./history").then(({ useHistoryStore }) => {
         useHistoryStore().loadHistory();
@@ -126,14 +142,20 @@ export const useOptOutStore = defineStore("optout", () => {
     brokerProgress.value = new Map();
     brokerOutcomes.value = [];
     prevCompleted = 0;
-    const id = await invoke<string>("start_opt_out_run", {
-      brokerIds,
-      playbookSelections: playbookSelections ?? null,
-    });
-    runId.value = id;
-    status.value = "running";
-    brokersCompleted.value = 0;
-    brokersTotal.value = brokerIds.length;
+    try {
+      const id = await invoke<string>("start_opt_out_run", {
+        brokerIds,
+        playbookSelections: playbookSelections ?? null,
+      });
+      runId.value = id;
+      status.value = "running";
+      brokersCompleted.value = 0;
+      brokersTotal.value = brokerIds.length;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error("Failed to start opt-out run", { description: msg });
+      throw e;
+    }
   }
 
   async function continueAfterUserAction() {

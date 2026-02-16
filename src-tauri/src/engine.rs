@@ -227,13 +227,19 @@ pub async fn run_opt_outs(
             } else if selection == "best" {
                 match playbook_api::fetch_best_playbook(&broker.id).await {
                     Ok(pb) => pb,
-                    Err(_) => None,
+                    Err(e) => {
+                        eprintln!("[opt-out] {}: Failed to fetch best playbook: {}", broker.name, e);
+                        None
+                    }
                 }
             } else {
                 // Specific community playbook ID selected
                 match playbook_api::fetch_playbook_detail(selection).await {
                     Ok(pb) => Some(pb),
-                    Err(_) => None,
+                    Err(e) => {
+                        eprintln!("[opt-out] {}: Failed to fetch playbook {}: {}", broker.name, selection, e);
+                        None
+                    }
                 }
             }
         } else {
@@ -245,10 +251,10 @@ pub async fn run_opt_outs(
             Some(pb) => pb,
             None => {
                 let error_msg = "No playbook available for this broker".to_string();
+                eprintln!("[opt-out] {}: {}", broker.name, error_msg);
                 emit_progress(broker, &error_msg, idx, RunStatus::Running, None, Some(error_msg.clone()));
                 save_failed_record(&app, broker, &run_id, &error_msg);
                 failed += 1;
-                let _ = page.close().await;
                 continue;
             }
         };
@@ -257,10 +263,10 @@ pub async fn run_opt_outs(
         if pb.status != "local" {
             if let Err(e) = playbook_verification::verify_playbook_signature(&pb) {
                 let error_msg = format!("Playbook rejected: {}", e);
+                eprintln!("[opt-out] {}: {}", broker.name, error_msg);
                 emit_progress(broker, &error_msg, idx, RunStatus::Running, None, Some(error_msg.clone()));
                 save_failed_record(&app, broker, &run_id, &error_msg);
                 failed += 1;
-                let _ = page.close().await;
                 continue;
             }
         }
@@ -268,10 +274,10 @@ pub async fn run_opt_outs(
         // Validate playbook steps before executing
         if let Err(validation_err) = playbook_validation::validate_steps(&pb.steps) {
             let error_msg = format!("Playbook rejected: {}", validation_err);
+            eprintln!("[opt-out] {}: {}", broker.name, error_msg);
             emit_progress(broker, &error_msg, idx, RunStatus::Running, None, Some(error_msg.clone()));
             save_failed_record(&app, broker, &run_id, &error_msg);
             failed += 1;
-            let _ = page.close().await;
             continue;
         }
 
@@ -420,7 +426,7 @@ pub async fn run_opt_outs(
                 outcome: outcome_str,
                 failure_step,
                 error_message: failure_error.clone(),
-                app_version: "0.1.0".to_string(),
+                app_version: env!("CARGO_PKG_VERSION").to_string(),
             };
             tokio::spawn(async move {
                 let _ = playbook_api::report_outcome(&playbook_id, &report).await;
@@ -454,9 +460,11 @@ pub async fn run_opt_outs(
         "failed": failed
     }));
 
-    // Clean up browser
-    drop(browser_instance);
-    handler_handle.abort();
+    // Leave Chrome open so the user can inspect pages, verify results, or debug.
+    // The next run's cleanup_previous_chrome() will handle the stale process.
+    std::mem::forget(browser_instance);
+    // Handler task will end naturally when Chrome is closed by the user.
+    drop(handler_handle);
 }
 
 fn save_success_record(app: &tauri::AppHandle, broker: &Broker, run_id: &str) {
