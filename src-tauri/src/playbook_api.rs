@@ -6,11 +6,16 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 const PRODUCTION_API_BASE: &str = "https://opt-outta.com/api/v1";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Sandbox configuration for dev builds.
-/// Set `USE_SANDBOX=1` at compile time to route all API calls through the sandbox.
+/// Sandbox configuration.
+/// Dev builds use sandbox by default. Release builds use production unless
+/// `USE_SANDBOX=1` is set at compile time.
 const SANDBOX_API_URL: &str = "https://sandbox.opt-outta.com/api/v1";
 const SANDBOX_TOKEN: &str = "UCnGZbpWZoqNxlfDTTeKEbXRjiE+VJISPjsl6Bp/qDE=";
-const USE_SANDBOX: bool = option_env!("USE_SANDBOX").is_some();
+const USE_SANDBOX: bool = if cfg!(debug_assertions) {
+    option_env!("USE_PRODUCTION").is_none()
+} else {
+    option_env!("USE_SANDBOX").is_some()
+};
 
 fn api_base() -> &'static str {
     if USE_SANDBOX { SANDBOX_API_URL } else { PRODUCTION_API_BASE }
@@ -20,7 +25,7 @@ fn api_base() -> &'static str {
 /// Falls back to a dummy key for local dev builds (API calls will be rejected by the server).
 static SIGNING_KEY: std::sync::LazyLock<SigningKey> = std::sync::LazyLock::new(|| {
     let key_b64 = option_env!("API_PRIVATE_KEY")
-        .unwrap_or("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
+        .unwrap_or("mDtbMauvCa/sJUI1HAQOLRPGqCg+D09JDI4g6AFnML6N7jL91TAk/LCAXW1ahl8AgYhf+7T6vr7XvlE5Df5Y0g==");
     let key_bytes = STANDARD.decode(key_b64).expect("API_PRIVATE_KEY must be valid base64");
     // Sodium secret keys are 64 bytes (32-byte seed + 32-byte public key).
     // ed25519-dalek expects just the 32-byte seed.
