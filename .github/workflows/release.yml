@@ -36,6 +36,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -46,6 +47,8 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          shared-key: ${{ matrix.label }}
+          cache-on-failure: true
 
       - name: Install Linux dependencies
         if: matrix.platform == 'ubuntu-22.04'
