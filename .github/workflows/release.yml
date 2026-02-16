@@ -79,11 +79,26 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Prepare signing key
+        shell: bash
+        env:
+          RAW_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          # GitHub secrets can wrap long base64 lines with newlines.
+          # Reconstruct as proper two-line minisign format: comment + key.
+          COMMENT=$(echo "$RAW_KEY" | head -1)
+          KEY_DATA=$(echo "$RAW_KEY" | tail -n +2 | tr -d '\n\r')
+          {
+            echo "TAURI_SIGNING_PRIVATE_KEY<<ENDOFKEY"
+            echo "$COMMENT"
+            echo "$KEY_DATA"
+            echo "ENDOFKEY"
+          } >> "$GITHUB_ENV"
+
       - name: Build Tauri app
         env:
           API_PRIVATE_KEY: ${{ secrets.API_PRIVATE_KEY }}
           PLAYBOOK_PUBLIC_KEY: ${{ secrets.PLAYBOOK_PUBLIC_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
         run: npx tauri build --target ${{ matrix.target }}
 
@@ -127,7 +142,7 @@ jobs:
             done
 
             # Upload updater bundle (.AppImage.tar.gz) and collect sig
-            targz="$base/appimage/opt-outta_${version}_amd64.AppImage.tar.gz"
+            targz="$base/appimage/Opt-Outta_${version}_amd64.AppImage.tar.gz"
             sig="${targz}.sig"
             [ -f "$targz" ] && gh release upload "$tag" "$targz" --clobber --repo "${{ github.repository }}"
             [ -f "$sig" ] && cp "$sig" "updater-sigs/${{ matrix.updater_key }}.sig"
@@ -194,7 +209,7 @@ jobs:
             --arg darwin_sig "$darwin_sig" \
             --arg darwin_url "${base}/Opt-Outta.app.tar.gz" \
             --arg linux_sig "$linux_sig" \
-            --arg linux_url "${base}/opt-outta_${version}_amd64.AppImage.tar.gz" \
+            --arg linux_url "${base}/Opt-Outta_${version}_amd64.AppImage.tar.gz" \
             --arg windows_sig "$windows_sig" \
             --arg windows_url "${base}/Opt-Outta_${version}_x64-setup.nsis.zip" \
             '{
