@@ -67,6 +67,9 @@ pub async fn launch() -> Result<(Browser, Handler), String> {
         .chrome_executable(chrome_path)
         .user_data_dir(&data_dir)
         .arg("--disable-blink-features=AutomationControlled")
+        .arg("--no-first-run")
+        .arg("--no-default-browser-check")
+        .arg("--disable-background-timer-throttling")
         .viewport(None)
         .build()
         .map_err(|e| format!("Failed to build browser config: {}", e))?;

@@ -178,17 +178,43 @@ pub async fn run_opt_outs(
             break;
         }
 
+        // Check if Chrome is still alive
+        if handler_handle.is_finished() {
+            let error_msg = "Chrome closed unexpectedly. Please try again.".to_string();
+            eprintln!("[opt-out] {}", error_msg);
+            emit_progress(broker, &error_msg, idx, RunStatus::Failed, None, Some(error_msg.clone()));
+            for remaining in &brokers[idx..] {
+                save_failed_record(&app, remaining, &run_id, "Chrome closed unexpectedly");
+            }
+            failed += brokers.len() - idx;
+            break;
+        }
+
         emit_progress(broker, "Navigating to opt-out page...", idx, RunStatus::Running, None, None);
 
-        // Open new page
-        let page = match browser_instance.new_page(&broker.opt_out_url).await {
-            Ok(p) => p,
-            Err(e) => {
+        // Open new page (with timeout — if Chrome died, this hangs forever)
+        let page = match tokio::time::timeout(
+            tokio::time::Duration::from_secs(15),
+            browser_instance.new_page(&broker.opt_out_url),
+        ).await {
+            Ok(Ok(p)) => p,
+            Ok(Err(e)) => {
                 let error_msg = format!("Failed to open page: {}", e);
+                eprintln!("[opt-out] {}: {}", broker.name, error_msg);
                 emit_progress(broker, &error_msg, idx, RunStatus::Running, None, Some(error_msg.clone()));
                 save_failed_record(&app, broker, &run_id, &error_msg);
                 failed += 1;
                 continue;
+            }
+            Err(_) => {
+                let error_msg = "Chrome not responding — it may have closed or crashed.".to_string();
+                eprintln!("[opt-out] {}: {}", broker.name, error_msg);
+                emit_progress(broker, &error_msg, idx, RunStatus::Failed, None, Some(error_msg.clone()));
+                for remaining in &brokers[idx..] {
+                    save_failed_record(&app, remaining, &run_id, "Chrome not responding");
+                }
+                failed += brokers.len() - idx;
+                break;
             }
         };
 
