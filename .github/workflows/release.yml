@@ -79,28 +79,21 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Prepare signing key
+      - name: Build Tauri app
         shell: bash
         env:
-          RAW_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-        run: |
-          # GitHub secrets can wrap long base64 lines with newlines.
-          # Reconstruct as proper two-line minisign format: comment + key.
-          COMMENT=$(echo "$RAW_KEY" | head -1)
-          KEY_DATA=$(echo "$RAW_KEY" | tail -n +2 | tr -d '\n\r')
-          {
-            echo "TAURI_SIGNING_PRIVATE_KEY<<ENDOFKEY"
-            echo "$COMMENT"
-            echo "$KEY_DATA"
-            echo "ENDOFKEY"
-          } >> "$GITHUB_ENV"
-
-      - name: Build Tauri app
-        env:
+          _RAW_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           API_PRIVATE_KEY: ${{ secrets.API_PRIVATE_KEY }}
           PLAYBOOK_PUBLIC_KEY: ${{ secrets.PLAYBOOK_PUBLIC_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
-        run: npx tauri build --target ${{ matrix.target }}
+        run: |
+          # GitHub secrets wrap long base64 lines; reconstruct as two-line minisign key
+          FIRST_LINE=$(echo "$_RAW_KEY" | head -n 1)
+          REST=$(echo "$_RAW_KEY" | tail -n +2 | tr -d '\n\r\t ')
+          printf -v TAURI_SIGNING_PRIVATE_KEY '%s\n%s' "$FIRST_LINE" "$REST"
+          export TAURI_SIGNING_PRIVATE_KEY
+          echo "Signing key: line1=${#FIRST_LINE} chars, line2=${#REST} chars"
+          npx tauri build --target ${{ matrix.target }}
 
       - name: Upload assets and collect sigs
         shell: bash
