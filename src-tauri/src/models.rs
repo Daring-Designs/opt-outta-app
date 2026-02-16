@@ -176,6 +176,11 @@ pub enum FormAction {
         selector: String,
         message: String,
     },
+    #[serde(rename = "manual_select")]
+    ManualSelect {
+        selector: String,
+        message: String,
+    },
     #[serde(rename = "error")]
     Error {
         message: String,

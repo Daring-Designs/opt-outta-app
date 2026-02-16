@@ -294,6 +294,25 @@ export const usePlaybooksStore = defineStore("playbooks", () => {
 
     recordingStatus.value = "submitting";
 
+    // Auto-save a local copy so the user can run it while pending review
+    if (!submittingFromLocalId.value) {
+      const now = new Date().toISOString();
+      const localCopy: LocalPlaybook = {
+        id: crypto.randomUUID(),
+        brokerId: recordingBrokerId.value!,
+        brokerName: recordingBrokerName.value!,
+        title,
+        notes,
+        steps: editableSteps.value,
+        createdAt: now,
+        updatedAt: now,
+        submittedAt: now,
+      };
+      await invoke("save_local_playbook", { playbook: localCopy });
+      localPlaybooks.value = [...localPlaybooks.value, localCopy];
+      submittingFromLocalId.value = localCopy.id;
+    }
+
     const submission: PlaybookSubmission = {
       broker_id: recordingBrokerId.value!,
       broker_name: recordingBrokerName.value!,

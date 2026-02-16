@@ -379,8 +379,8 @@ pub async fn execute_action(page: &Page, action: &FormAction, profile: &Profile)
                 .await
                 .map_err(|e| format!("FindAndClick failed for {}: {}", selector, e))?;
         }
-        // Captcha, UserPrompt, ManualFill, Done, Error are handled by the engine, not here
-        FormAction::Captcha { .. } | FormAction::UserPrompt { .. } | FormAction::ManualFill { .. } | FormAction::Done { .. } | FormAction::Error { .. } => {}
+        // Captcha, UserPrompt, ManualFill, ManualSelect, Done, Error are handled by the engine, not here
+        FormAction::Captcha { .. } | FormAction::UserPrompt { .. } | FormAction::ManualFill { .. } | FormAction::ManualSelect { .. } | FormAction::Done { .. } | FormAction::Error { .. } => {}
     }
 
     Ok(())

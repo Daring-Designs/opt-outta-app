@@ -290,12 +290,7 @@ fn validate_fill_step(step: &PlaybookStep, ctx: &str) -> Result<(), String> {
 
 fn validate_select_step(step: &PlaybookStep, ctx: &str) -> Result<(), String> {
     validate_requires_selector(step, ctx)?;
-    if step.value.is_none() && step.profile_key.is_none() {
-        return Err(format!(
-            "{}: Select step requires a value or profile_key.",
-            ctx
-        ));
-    }
+    // Select steps can use profile_key (auto-fill from profile), value (fixed), or neither (manual selection by user)
     Ok(())
 }
 

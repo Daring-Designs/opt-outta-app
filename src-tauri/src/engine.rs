@@ -32,14 +32,22 @@ fn playbook_step_to_form_action(step: &PlaybookStep) -> Option<FormAction> {
             }
         }
         "select" => {
-            // Select can use profile_key or a static value
-            let value = step.value.clone().unwrap_or_else(|| {
-                step.profile_key.clone().unwrap_or_default()
-            });
-            Some(FormAction::Select {
-                selector: step.selector.clone().unwrap_or_default(),
-                value,
-            })
+            if step.value.is_some() || step.profile_key.is_some() {
+                // Auto-select: use profile_key or a static value
+                let value = step.value.clone().unwrap_or_else(|| {
+                    step.profile_key.clone().unwrap_or_default()
+                });
+                Some(FormAction::Select {
+                    selector: step.selector.clone().unwrap_or_default(),
+                    value,
+                })
+            } else {
+                // Manual select: user picks the dropdown option
+                Some(FormAction::ManualSelect {
+                    selector: step.selector.clone().unwrap_or_default(),
+                    message: step.description.clone(),
+                })
+            }
         }
         "check" => Some(FormAction::Check {
             selector: step.selector.clone().unwrap_or_default(),
@@ -331,6 +339,36 @@ pub async fn run_opt_outs(
                             failure_step = Some(step.position);
                             failure_error = Some(e.clone());
                             emit_progress(broker, &format!("Failed to highlight field: {}", e), idx, RunStatus::Running, None, None);
+                            break;
+                        }
+                        continue;
+                    }
+                    emit_progress(
+                        broker, message, idx, RunStatus::WaitingForUser,
+                        Some(UserActionRequired::UserPrompt {
+                            message: format!("Please fill out this field in the browser: {}", message),
+                            description: None,
+                        }),
+                        None,
+                    );
+                    let (tx, rx) = oneshot::channel();
+                    {
+                        let mut guard = user_action_channel.lock().await;
+                        *guard = Some(tx);
+                    }
+                    let _ = rx.await;
+                    // Remove the highlight after user confirms
+                    let _ = browser::remove_highlight(&page, selector).await;
+                    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                }
+                FormAction::ManualSelect { selector, message } => {
+                    // Scroll to and highlight the dropdown in the browser
+                    if let Err(e) = browser::highlight_element(&page, selector).await {
+                        if !step.optional {
+                            playbook_failed = true;
+                            failure_step = Some(step.position);
+                            failure_error = Some(e.clone());
+                            emit_progress(broker, &format!("Failed to highlight dropdown: {}", e), idx, RunStatus::Running, None, None);
                             break;
                         }
                         continue;
