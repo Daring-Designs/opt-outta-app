@@ -79,6 +79,28 @@ jobs:
           prerelease: false
           args: --target ${{ matrix.target }}
 
+      - name: Find updater artifacts
+        id: updater
+        shell: bash
+        run: |
+          echo "=== Listing all .sig files ==="
+          find src-tauri/target -name "*.sig" 2>/dev/null || true
+
+          if [ "${{ matrix.platform }}" = "macos-latest" ]; then
+            sig=$(find src-tauri/target -name "*.app.tar.gz.sig" 2>/dev/null | head -1)
+            echo "sig=$sig" >> "$GITHUB_OUTPUT"
+          elif [ "${{ matrix.platform }}" = "ubuntu-22.04" ]; then
+            bundle=$(find src-tauri/target -name "*.AppImage.tar.gz" ! -name "*.sig" 2>/dev/null | head -1)
+            sig=$(find src-tauri/target -name "*.AppImage.tar.gz.sig" 2>/dev/null | head -1)
+            echo "bundle=$bundle" >> "$GITHUB_OUTPUT"
+            echo "sig=$sig" >> "$GITHUB_OUTPUT"
+          elif [ "${{ matrix.platform }}" = "windows-latest" ]; then
+            bundle=$(find src-tauri/target -name "*.nsis.zip" ! -name "*.sig" 2>/dev/null | head -1)
+            sig=$(find src-tauri/target -name "*.nsis.zip.sig" 2>/dev/null | head -1)
+            echo "bundle=$bundle" >> "$GITHUB_OUTPUT"
+            echo "sig=$sig" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Upload updater bundles to release
         shell: bash
         env:
@@ -86,41 +108,39 @@ jobs:
         run: |
           tag="${{ github.ref_name }}"
 
-          # macOS: .app.tar.gz already uploaded by tauri-action, just need sig
           if [ "${{ matrix.platform }}" = "macos-latest" ]; then
-            sig=$(find src-tauri/target -name "*.app.tar.gz.sig" -print | head -1)
-            if [ -n "$sig" ]; then
+            sig="${{ steps.updater.outputs.sig }}"
+            if [ -n "$sig" ] && [ -f "$sig" ]; then
               cp "$sig" "Opt-Outta_universal.app.tar.gz.sig"
               gh release upload "$tag" "Opt-Outta_universal.app.tar.gz.sig" --clobber
+            else
+              echo "Warning: macOS sig not found"
             fi
           fi
 
-          # Linux: upload .AppImage.tar.gz + sig
           if [ "${{ matrix.platform }}" = "ubuntu-22.04" ]; then
-            tar=$(find src-tauri/target -path "*/release/bundle/appimage/Opt-Outta*.AppImage.tar.gz" ! -name "*.sig" -print | head -1)
-            sig=$(find src-tauri/target -path "*/release/bundle/appimage/Opt-Outta*.AppImage.tar.gz.sig" -print | head -1)
-            [ -n "$tar" ] && gh release upload "$tag" "$tar" --clobber
-            [ -n "$sig" ] && gh release upload "$tag" "$sig" --clobber
+            bundle="${{ steps.updater.outputs.bundle }}"
+            sig="${{ steps.updater.outputs.sig }}"
+            [ -n "$bundle" ] && [ -f "$bundle" ] && gh release upload "$tag" "$bundle" --clobber
+            [ -n "$sig" ] && [ -f "$sig" ] && gh release upload "$tag" "$sig" --clobber
           fi
 
-          # Windows: upload .nsis.zip + sig
           if [ "${{ matrix.platform }}" = "windows-latest" ]; then
-            zip=$(find src-tauri/target -path "*/release/bundle/nsis/Opt-Outta*.nsis.zip" ! -name "*.sig" -print | head -1)
-            sig=$(find src-tauri/target -path "*/release/bundle/nsis/Opt-Outta*.nsis.zip.sig" -print | head -1)
-            [ -n "$zip" ] && gh release upload "$tag" "$zip" --clobber
-            [ -n "$sig" ] && gh release upload "$tag" "$sig" --clobber
+            bundle="${{ steps.updater.outputs.bundle }}"
+            sig="${{ steps.updater.outputs.sig }}"
+            [ -n "$bundle" ] && [ -f "$bundle" ] && gh release upload "$tag" "$bundle" --clobber
+            [ -n "$sig" ] && [ -f "$sig" ] && gh release upload "$tag" "$sig" --clobber
           fi
 
       - name: Save signature for updater JSON
         shell: bash
         run: |
           mkdir -p updater-sigs
-          if [ "${{ matrix.platform }}" = "macos-latest" ]; then
-            find src-tauri/target -name "*.app.tar.gz.sig" -exec cp {} updater-sigs/${{ matrix.updater_key }}.sig \;
-          elif [ "${{ matrix.platform }}" = "ubuntu-22.04" ]; then
-            find src-tauri/target -path "*/release/bundle/appimage/Opt-Outta*.AppImage.tar.gz.sig" -exec cp {} updater-sigs/${{ matrix.updater_key }}.sig \;
-          elif [ "${{ matrix.platform }}" = "windows-latest" ]; then
-            find src-tauri/target -path "*/release/bundle/nsis/Opt-Outta*.nsis.zip.sig" -exec cp {} updater-sigs/${{ matrix.updater_key }}.sig \;
+          sig="${{ steps.updater.outputs.sig }}"
+          if [ -n "$sig" ] && [ -f "$sig" ]; then
+            cp "$sig" "updater-sigs/${{ matrix.updater_key }}.sig"
+          else
+            echo "Warning: no sig file found for ${{ matrix.updater_key }}"
           fi
 
       - name: Upload sig artifact
