@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, shallowRef, onMounted } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { useProfileStore } from "../stores/profile";
 import { useThemeStore, type ThemeMode } from "../stores/theme";
@@ -36,7 +36,7 @@ async function fetchChangelog() {
 const appVersion = ref("");
 const updateStatus = ref<"idle" | "checking" | "available" | "downloading" | "up-to-date" | "error">("idle");
 const updateError = ref("");
-const availableUpdate = ref<Update | null>(null);
+const availableUpdate = shallowRef<Update | null>(null);
 const downloadProgress = ref("");
 
 onMounted(async () => {
