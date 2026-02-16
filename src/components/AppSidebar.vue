@@ -1,8 +1,15 @@
 <script setup lang="ts">
+import { ref, onMounted } from "vue";
 import { useRoute } from "vue-router";
 import { LayoutDashboard, UserRound, Shield, Database, Clock, Settings } from "lucide-vue-next";
+import { getVersion } from "@tauri-apps/api/app";
 
 const route = useRoute();
+const appVersion = ref("");
+
+onMounted(async () => {
+  appVersion.value = await getVersion();
+});
 
 const navItems = [
   { path: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -40,7 +47,7 @@ function isActive(path: string): boolean {
       </router-link>
     </nav>
     <div class="border-t border-sidebar-border px-5 py-3">
-      <p class="text-xs text-muted-foreground">v0.1.0</p>
+      <p class="text-xs text-muted-foreground">v{{ appVersion || "..." }}</p>
     </div>
   </aside>
 </template>

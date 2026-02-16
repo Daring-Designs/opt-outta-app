@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Sun, Moon, Monitor, Download, RefreshCw, CheckCircle, AlertCircle, Loader2, FileText } from "lucide-vue-next";
 import { check, type Update } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
 import { getVersion } from "@tauri-apps/api/app";
 import type { ChangelogEntry } from "../types";
 
@@ -34,7 +35,7 @@ async function fetchChangelog() {
 
 // Update state
 const appVersion = ref("");
-const updateStatus = ref<"idle" | "checking" | "available" | "downloading" | "up-to-date" | "error">("idle");
+const updateStatus = ref<"idle" | "checking" | "available" | "downloading" | "installed" | "up-to-date" | "error">("idle");
 const updateError = ref("");
 const availableUpdate = shallowRef<Update | null>(null);
 const downloadProgress = ref("");
@@ -85,6 +86,8 @@ async function installUpdate() {
         downloadProgress.value = "Installing...";
       }
     });
+
+    updateStatus.value = "installed";
   } catch (e) {
     updateStatus.value = "error";
     updateError.value = e instanceof Error ? e.message : String(e);
@@ -169,6 +172,18 @@ async function deleteAllData() {
         <div v-else-if="updateStatus === 'downloading'" class="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 class="h-4 w-4 animate-spin" />
           {{ downloadProgress }}
+        </div>
+
+        <!-- Installed — restart required -->
+        <div v-else-if="updateStatus === 'installed'" class="space-y-3">
+          <div class="flex items-center gap-2 text-sm">
+            <CheckCircle class="h-4 w-4 text-green-500" />
+            <span>Update installed. Restart to apply.</span>
+          </div>
+          <Button @click="relaunch()">
+            <RefreshCw class="mr-2 h-4 w-4" />
+            Restart Now
+          </Button>
         </div>
 
         <!-- Up to date -->
