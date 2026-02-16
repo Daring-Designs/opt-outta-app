@@ -14,7 +14,7 @@ import PlaybookRecorder from "../components/PlaybookRecorder.vue";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { ChevronRight, ChevronUp, ChevronDown, Plus } from "lucide-vue-next";
+import { ChevronRight, ChevronUp, ChevronDown, Plus, Play } from "lucide-vue-next";
 import { invoke } from "@tauri-apps/api/core";
 
 const router = useRouter();
@@ -71,13 +71,6 @@ async function handleConfirmRun(playbookSelections: Record<string, string>) {
   } catch (e) {
     runError.value = String(e);
   }
-}
-
-function brokerHasPlaybooks(brokerId: string): boolean {
-  return (
-    playbooksStore.getPlaybooksForBroker(brokerId).length > 0 ||
-    playbooksStore.getLocalPlaybooksForBroker(brokerId).length > 0
-  );
 }
 
 // --- Playbook expand ---
@@ -315,14 +308,13 @@ function difficultyColor(difficulty: string): string {
           </div>
 
           <!-- Run button -->
-          <Button
-            v-if="brokerHasPlaybooks(broker.id)"
-            size="sm"
+          <button
+            class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-green-500/20 text-green-400 transition-colors hover:bg-green-500/30 disabled:opacity-30"
             :disabled="optOutStore.isActive"
             @click.stop="openRunForBroker(broker)"
           >
-            Run
-          </Button>
+            <Play class="h-3.5 w-3.5 fill-current" />
+          </button>
         </div>
 
         <!-- Expanded: playbook detail panel -->
