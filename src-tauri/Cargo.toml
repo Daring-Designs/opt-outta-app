@@ -1,6 +1,6 @@
 [package]
 name = "opt-outta"
-version = "0.1.19"
+version = "0.1.20"
 description = "Automated data broker opt-out requests"
 authors = ["Daring Designs"]
 edition = "2021"
