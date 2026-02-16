@@ -17,9 +17,9 @@ pub fn get_brokers(app: tauri::AppHandle) -> Result<BrokerRegistry, String> {
     let bundled: BrokerRegistry =
         serde_json::from_str(&data).map_err(|e| format!("Failed to parse broker registry: {}", e))?;
 
-    // Prefer cached registry if its version is newer
+    // Prefer cached registry if its version is newer and non-empty
     if let Ok(Some(cached)) = registry_cache::load(&app) {
-        if cached.version > bundled.version {
+        if cached.version > bundled.version && !cached.brokers.is_empty() {
             return Ok(cached);
         }
     }
@@ -42,6 +42,12 @@ pub async fn sync_registry(app: tauri::AppHandle) -> Result<bool, String> {
 
     // Download and cache the new registry
     let registry = playbook_api::fetch_registry().await?;
+
+    // Never cache an empty registry — the API may have returned bad data
+    if registry.brokers.is_empty() {
+        return Ok(false);
+    }
+
     registry_cache::save(&app, &registry)?;
 
     Ok(true)
