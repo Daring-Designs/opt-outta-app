@@ -3,8 +3,18 @@ use ed25519_dalek::{SigningKey, Signer};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-const API_BASE: &str = "https://opt-outta.com/api/v1";
+const PRODUCTION_API_BASE: &str = "https://opt-outta.com/api/v1";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Sandbox configuration for dev builds.
+/// Set `USE_SANDBOX=1` at compile time to route all API calls through the sandbox.
+const SANDBOX_API_URL: &str = "https://sandbox.opt-outta.com/api/v1";
+const SANDBOX_TOKEN: &str = "UCnGZbpWZoqNxlfDTTeKEbXRjiE+VJISPjsl6Bp/qDE=";
+const USE_SANDBOX: bool = option_env!("USE_SANDBOX").is_some();
+
+fn api_base() -> &'static str {
+    if USE_SANDBOX { SANDBOX_API_URL } else { PRODUCTION_API_BASE }
+}
 
 /// Ed25519 signing key, embedded at compile time via `API_PRIVATE_KEY` env var.
 /// Falls back to a dummy key for local dev builds (API calls will be rejected by the server).
@@ -42,7 +52,7 @@ fn sign_request(method: &str, path: &str, body: &str) -> (String, String) {
 
 /// Extract the path (+ query string) from a full URL.
 fn url_path(url: &str) -> String {
-    // URL is always API_BASE + suffix, so strip the origin
+    // URL is always api_base + suffix, so strip the origin
     if let Some(pos) = url.find("/api/") {
         url[pos..].to_string()
     } else {
@@ -62,39 +72,48 @@ fn url_path(url: &str) -> String {
 }
 
 /// Send a signed GET request and return the response.
+/// In sandbox mode, uses bearer token auth instead of Ed25519.
 async fn signed_get(url: &str) -> Result<reqwest::Response, String> {
-    let path = url_path(url);
-    let (signature, timestamp) = sign_request("GET", &path, "");
-
-    reqwest::Client::builder()
+    let client = reqwest::Client::builder()
         .timeout(REQUEST_TIMEOUT)
         .build()
-        .map_err(|e| format!("Failed to build HTTP client: {}", e))?
-        .get(url)
-        .header("X-Signature", signature)
-        .header("X-Timestamp", timestamp)
-        .send()
-        .await
-        .map_err(|e| format!("Request failed: {}", e))
+        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+
+    let mut req = client.get(url);
+
+    if USE_SANDBOX {
+        req = req.header("Authorization", format!("Bearer {}", SANDBOX_TOKEN));
+    } else {
+        let path = url_path(url);
+        let (signature, timestamp) = sign_request("GET", &path, "");
+        req = req.header("X-Signature", signature).header("X-Timestamp", timestamp);
+    }
+
+    req.send().await.map_err(|e| format!("Request failed: {}", e))
 }
 
 /// Send a signed POST request with a JSON body and return the response.
+/// In sandbox mode, uses bearer token auth instead of Ed25519.
 async fn signed_post(url: &str, body: &str) -> Result<reqwest::Response, String> {
-    let path = url_path(url);
-    let (signature, timestamp) = sign_request("POST", &path, body);
-
-    reqwest::Client::builder()
+    let client = reqwest::Client::builder()
         .timeout(REQUEST_TIMEOUT)
         .build()
-        .map_err(|e| format!("Failed to build HTTP client: {}", e))?
+        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+
+    let mut req = client
         .post(url)
-        .header("X-Signature", signature)
-        .header("X-Timestamp", timestamp)
         .header("Content-Type", "application/json")
-        .body(body.to_string())
-        .send()
-        .await
-        .map_err(|e| format!("Request failed: {}", e))
+        .body(body.to_string());
+
+    if USE_SANDBOX {
+        req = req.header("Authorization", format!("Bearer {}", SANDBOX_TOKEN));
+    } else {
+        let path = url_path(url);
+        let (signature, timestamp) = sign_request("POST", &path, body);
+        req = req.header("X-Signature", signature).header("X-Timestamp", timestamp);
+    }
+
+    req.send().await.map_err(|e| format!("Request failed: {}", e))
 }
 
 // ---------------------------------------------------------------------------
@@ -119,7 +138,7 @@ pub fn get_device_id() -> String {
 
 /// Fetch the best approved playbook for a broker, if one exists.
 pub async fn fetch_best_playbook(broker_id: &str) -> Result<Option<Playbook>, String> {
-    let url = format!("{}/playbooks?broker_id={}&sort=best&limit=1", API_BASE, broker_id);
+    let url = format!("{}/playbooks?broker_id={}&sort=best&limit=1", api_base(), broker_id);
 
     let response = signed_get(&url).await?;
 
@@ -144,7 +163,7 @@ pub async fn fetch_best_playbook(broker_id: &str) -> Result<Option<Playbook>, St
 
 /// Fetch a single playbook with all steps.
 pub async fn fetch_playbook_detail(id: &str) -> Result<Playbook, String> {
-    let url = format!("{}/playbooks/{}", API_BASE, id);
+    let url = format!("{}/playbooks/{}", api_base(), id);
 
     let response = signed_get(&url).await?;
 
@@ -164,7 +183,7 @@ pub async fn fetch_playbook_detail(id: &str) -> Result<Playbook, String> {
 
 /// Fetch list of playbook summaries for a broker.
 pub async fn fetch_playbooks(broker_id: &str) -> Result<Vec<PlaybookSummary>, String> {
-    let url = format!("{}/playbooks?broker_id={}&sort=best&limit=10", API_BASE, broker_id);
+    let url = format!("{}/playbooks?broker_id={}&sort=best&limit=10", api_base(), broker_id);
 
     let response = signed_get(&url).await?;
 
@@ -184,7 +203,7 @@ pub async fn fetch_playbooks(broker_id: &str) -> Result<Vec<PlaybookSummary>, St
 
 /// Submit a new recorded playbook.
 pub async fn submit_playbook(submission: &PlaybookSubmission) -> Result<PlaybookSubmitResponse, String> {
-    let url = format!("{}/playbooks", API_BASE);
+    let url = format!("{}/playbooks", api_base());
     let body = serde_json::to_string(submission)
         .map_err(|e| format!("Failed to serialize submission: {}", e))?;
 
@@ -209,7 +228,7 @@ pub async fn submit_playbook(submission: &PlaybookSubmission) -> Result<Playbook
 
 /// Vote on a playbook (up or down).
 pub async fn vote_playbook(id: &str, vote: &str) -> Result<(), String> {
-    let url = format!("{}/playbooks/{}/vote", API_BASE, id);
+    let url = format!("{}/playbooks/{}/vote", api_base(), id);
     let device_id = get_device_id();
 
     let body_value = serde_json::json!({
@@ -232,7 +251,7 @@ pub async fn vote_playbook(id: &str, vote: &str) -> Result<(), String> {
 
 /// Check the current status of a submitted playbook.
 pub async fn check_playbook_status(id: &str) -> Result<String, String> {
-    let url = format!("{}/playbooks/{}", API_BASE, id);
+    let url = format!("{}/playbooks/{}", api_base(), id);
 
     let response = signed_get(&url).await?;
 
@@ -250,7 +269,7 @@ pub async fn check_playbook_status(id: &str) -> Result<String, String> {
 
 /// Suggest a new broker to be added to the registry.
 pub async fn suggest_broker(name: &str, url: &str, notes: &str) -> Result<(), String> {
-    let api_url = format!("{}/broker-suggestions", API_BASE);
+    let api_url = format!("{}/broker-suggestions", api_base());
     let device_id = get_device_id();
 
     let body_value = serde_json::json!({
@@ -275,7 +294,7 @@ pub async fn suggest_broker(name: &str, url: &str, notes: &str) -> Result<(), St
 
 /// Fetch the current registry version from the API.
 pub async fn fetch_registry_version() -> Result<String, String> {
-    let url = format!("{}/registry/version", API_BASE);
+    let url = format!("{}/registry/version", api_base());
     let response = signed_get(&url).await?;
 
     if !response.status().is_success() {
@@ -294,7 +313,7 @@ pub async fn fetch_registry_version() -> Result<String, String> {
 
 /// Fetch the full broker registry from the API.
 pub async fn fetch_registry() -> Result<BrokerRegistry, String> {
-    let url = format!("{}/registry", API_BASE);
+    let url = format!("{}/registry", api_base());
     let response = signed_get(&url).await?;
 
     if !response.status().is_success() {
@@ -313,7 +332,7 @@ pub async fn fetch_registry() -> Result<BrokerRegistry, String> {
 
 /// Fetch the app changelog.
 pub async fn fetch_changelog() -> Result<Vec<ChangelogEntry>, String> {
-    let url = format!("{}/changelog", API_BASE);
+    let url = format!("{}/changelog", api_base());
     let response = signed_get(&url).await?;
 
     if !response.status().is_success() {
@@ -332,7 +351,7 @@ pub async fn fetch_changelog() -> Result<Vec<ChangelogEntry>, String> {
 
 /// Fetch community execution reports for a playbook.
 pub async fn fetch_playbook_reports(playbook_id: &str) -> Result<Vec<PlaybookReportEntry>, String> {
-    let url = format!("{}/playbooks/{}/reports", API_BASE, playbook_id);
+    let url = format!("{}/playbooks/{}/reports", api_base(), playbook_id);
     let response = signed_get(&url).await?;
 
     if !response.status().is_success() {
@@ -351,7 +370,7 @@ pub async fn fetch_playbook_reports(playbook_id: &str) -> Result<Vec<PlaybookRep
 
 /// Report the outcome of running a playbook.
 pub async fn report_outcome(playbook_id: &str, report: &PlaybookReport) -> Result<(), String> {
-    let url = format!("{}/playbooks/{}/report", API_BASE, playbook_id);
+    let url = format!("{}/playbooks/{}/report", api_base(), playbook_id);
     let body = serde_json::to_string(report)
         .map_err(|e| format!("Failed to serialize report: {}", e))?;
 
