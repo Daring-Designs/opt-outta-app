@@ -69,6 +69,7 @@ jobs:
           PLAYBOOK_PUBLIC_KEY: ${{ secrets.PLAYBOOK_PUBLIC_KEY }}
           # Tauri update bundle signing
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Opt-Outta ${{ github.ref_name }}"
