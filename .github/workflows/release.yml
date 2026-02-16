@@ -18,12 +18,15 @@ jobs:
           - platform: macos-latest
             target: universal-apple-darwin
             label: macOS-universal
+            updater_key: darwin-universal
           - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             label: Linux-x64
+            updater_key: linux-x86_64
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             label: Windows-x64
+            updater_key: windows-x86_64
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -64,10 +67,8 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Ed25519 keys embedded at compile time
           API_PRIVATE_KEY: ${{ secrets.API_PRIVATE_KEY }}
           PLAYBOOK_PUBLIC_KEY: ${{ secrets.PLAYBOOK_PUBLIC_KEY }}
-          # Tauri update bundle signing
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
         with:
@@ -77,3 +78,108 @@ jobs:
           releaseDraft: false
           prerelease: false
           args: --target ${{ matrix.target }}
+
+      - name: Upload updater bundles to release
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${{ github.ref_name }}"
+
+          # macOS: .app.tar.gz already uploaded by tauri-action, just need sig
+          if [ "${{ matrix.platform }}" = "macos-latest" ]; then
+            sig=$(find src-tauri/target -name "*.app.tar.gz.sig" -print | head -1)
+            if [ -n "$sig" ]; then
+              cp "$sig" "Opt-Outta_universal.app.tar.gz.sig"
+              gh release upload "$tag" "Opt-Outta_universal.app.tar.gz.sig" --clobber
+            fi
+          fi
+
+          # Linux: upload .AppImage.tar.gz + sig
+          if [ "${{ matrix.platform }}" = "ubuntu-22.04" ]; then
+            tar=$(find src-tauri/target -path "*/release/bundle/appimage/Opt-Outta*.AppImage.tar.gz" ! -name "*.sig" -print | head -1)
+            sig=$(find src-tauri/target -path "*/release/bundle/appimage/Opt-Outta*.AppImage.tar.gz.sig" -print | head -1)
+            [ -n "$tar" ] && gh release upload "$tag" "$tar" --clobber
+            [ -n "$sig" ] && gh release upload "$tag" "$sig" --clobber
+          fi
+
+          # Windows: upload .nsis.zip + sig
+          if [ "${{ matrix.platform }}" = "windows-latest" ]; then
+            zip=$(find src-tauri/target -path "*/release/bundle/nsis/Opt-Outta*.nsis.zip" ! -name "*.sig" -print | head -1)
+            sig=$(find src-tauri/target -path "*/release/bundle/nsis/Opt-Outta*.nsis.zip.sig" -print | head -1)
+            [ -n "$zip" ] && gh release upload "$tag" "$zip" --clobber
+            [ -n "$sig" ] && gh release upload "$tag" "$sig" --clobber
+          fi
+
+      - name: Save signature for updater JSON
+        shell: bash
+        run: |
+          mkdir -p updater-sigs
+          if [ "${{ matrix.platform }}" = "macos-latest" ]; then
+            find src-tauri/target -name "*.app.tar.gz.sig" -exec cp {} updater-sigs/${{ matrix.updater_key }}.sig \;
+          elif [ "${{ matrix.platform }}" = "ubuntu-22.04" ]; then
+            find src-tauri/target -path "*/release/bundle/appimage/Opt-Outta*.AppImage.tar.gz.sig" -exec cp {} updater-sigs/${{ matrix.updater_key }}.sig \;
+          elif [ "${{ matrix.platform }}" = "windows-latest" ]; then
+            find src-tauri/target -path "*/release/bundle/nsis/Opt-Outta*.nsis.zip.sig" -exec cp {} updater-sigs/${{ matrix.updater_key }}.sig \;
+          fi
+
+      - name: Upload sig artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: updater-sig-${{ matrix.label }}
+          path: updater-sigs/
+
+  updater-json:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: updater-sig-*
+          merge-multiple: true
+          path: sigs
+
+      - name: Create and upload latest.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${{ github.ref_name }}"
+          version="${tag#v}"
+          date=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          base="https://github.com/${{ github.repository }}/releases/download/${tag}"
+
+          darwin_sig=""
+          linux_sig=""
+          windows_sig=""
+          [ -f sigs/darwin-universal.sig ] && darwin_sig=$(cat sigs/darwin-universal.sig)
+          [ -f sigs/linux-x86_64.sig ] && linux_sig=$(cat sigs/linux-x86_64.sig)
+          [ -f sigs/windows-x86_64.sig ] && windows_sig=$(cat sigs/windows-x86_64.sig)
+
+          jq -n \
+            --arg version "$version" \
+            --arg notes "See the assets below to download and install." \
+            --arg pub_date "$date" \
+            --arg darwin_sig "$darwin_sig" \
+            --arg darwin_url "${base}/Opt-Outta_universal.app.tar.gz" \
+            --arg linux_sig "$linux_sig" \
+            --arg linux_url "${base}/Opt-Outta_${version}_amd64.AppImage.tar.gz" \
+            --arg windows_sig "$windows_sig" \
+            --arg windows_url "${base}/Opt-Outta_${version}_x64-setup.nsis.zip" \
+            '{
+              version: $version,
+              notes: $notes,
+              pub_date: $pub_date,
+              platforms: (
+                {}
+                + (if $darwin_sig != "" then {"darwin-universal": {signature: $darwin_sig, url: $darwin_url}} else {} end)
+                + (if $linux_sig != "" then {"linux-x86_64": {signature: $linux_sig, url: $linux_url}} else {} end)
+                + (if $windows_sig != "" then {"windows-x86_64": {signature: $windows_sig, url: $windows_url}} else {} end)
+              )
+            }' > latest.json
+
+          echo "Generated latest.json:"
+          cat latest.json
+
+          gh release upload "$tag" latest.json --clobber --repo "${{ github.repository }}"
