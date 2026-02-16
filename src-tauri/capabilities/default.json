@@ -11,6 +11,7 @@
     "fs:allow-appdata-read",
     "fs:allow-appdata-write",
     "fs:allow-resource-read",
-    "core:event:default"
+    "core:event:default",
+    "updater:default"
   ]
 }

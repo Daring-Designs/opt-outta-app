@@ -1,15 +1,76 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, onMounted } from "vue";
 import { useProfileStore } from "../stores/profile";
 import { useThemeStore, type ThemeMode } from "../stores/theme";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Sun, Moon, Monitor } from "lucide-vue-next";
+import { Sun, Moon, Monitor, Download, RefreshCw, CheckCircle, AlertCircle, Loader2 } from "lucide-vue-next";
+import { check, type Update } from "@tauri-apps/plugin-updater";
+import { getVersion } from "@tauri-apps/api/app";
 
 const profileStore = useProfileStore();
 const themeStore = useThemeStore();
 
 const confirmDelete = ref(false);
+
+// Update state
+const appVersion = ref("");
+const updateStatus = ref<"idle" | "checking" | "available" | "downloading" | "up-to-date" | "error">("idle");
+const updateError = ref("");
+const availableUpdate = ref<Update | null>(null);
+const downloadProgress = ref("");
+
+onMounted(async () => {
+  appVersion.value = await getVersion();
+});
+
+async function checkForUpdates() {
+  updateStatus.value = "checking";
+  updateError.value = "";
+  availableUpdate.value = null;
+
+  try {
+    const update = await check();
+    if (update) {
+      availableUpdate.value = update;
+      updateStatus.value = "available";
+    } else {
+      updateStatus.value = "up-to-date";
+    }
+  } catch (e) {
+    updateStatus.value = "error";
+    updateError.value = e instanceof Error ? e.message : String(e);
+  }
+}
+
+async function installUpdate() {
+  if (!availableUpdate.value) return;
+
+  updateStatus.value = "downloading";
+  downloadProgress.value = "Downloading...";
+
+  try {
+    let downloaded = 0;
+    let contentLength = 0;
+
+    await availableUpdate.value.downloadAndInstall((event) => {
+      if (event.event === "Started" && event.data.contentLength) {
+        contentLength = event.data.contentLength;
+      } else if (event.event === "Progress") {
+        downloaded += event.data.chunkLength;
+        if (contentLength > 0) {
+          const pct = Math.round((downloaded / contentLength) * 100);
+          downloadProgress.value = `Downloading... ${pct}%`;
+        }
+      } else if (event.event === "Finished") {
+        downloadProgress.value = "Installing...";
+      }
+    });
+  } catch (e) {
+    updateStatus.value = "error";
+    updateError.value = e instanceof Error ? e.message : String(e);
+  }
+}
 
 const themeOptions: { value: ThemeMode; label: string; icon: typeof Sun }[] = [
   { value: "light", label: "Light", icon: Sun },
@@ -49,6 +110,65 @@ async function deleteAllData() {
             <component :is="opt.icon" class="h-4 w-4" />
             {{ opt.label }}
           </button>
+        </div>
+      </CardContent>
+    </Card>
+
+    <!-- Updates -->
+    <Card class="mb-6">
+      <CardHeader>
+        <CardTitle class="text-base">Updates</CardTitle>
+        <CardDescription>
+          Current version: <span class="font-mono">{{ appVersion || "..." }}</span>
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <!-- Idle -->
+        <Button v-if="updateStatus === 'idle'" variant="outline" @click="checkForUpdates">
+          <RefreshCw class="mr-2 h-4 w-4" />
+          Check for Updates
+        </Button>
+
+        <!-- Checking -->
+        <div v-else-if="updateStatus === 'checking'" class="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 class="h-4 w-4 animate-spin" />
+          Checking for updates...
+        </div>
+
+        <!-- Update available -->
+        <div v-else-if="updateStatus === 'available'" class="space-y-3">
+          <p class="text-sm">
+            Version <span class="font-mono font-medium">{{ availableUpdate?.version }}</span> is available.
+          </p>
+          <Button @click="installUpdate">
+            <Download class="mr-2 h-4 w-4" />
+            Download &amp; Install
+          </Button>
+        </div>
+
+        <!-- Downloading / Installing -->
+        <div v-else-if="updateStatus === 'downloading'" class="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 class="h-4 w-4 animate-spin" />
+          {{ downloadProgress }}
+        </div>
+
+        <!-- Up to date -->
+        <div v-else-if="updateStatus === 'up-to-date'" class="flex items-center gap-2 text-sm">
+          <CheckCircle class="h-4 w-4 text-green-500" />
+          <span>You're on the latest version.</span>
+          <Button variant="ghost" size="sm" class="ml-2" @click="updateStatus = 'idle'">Dismiss</Button>
+        </div>
+
+        <!-- Error -->
+        <div v-else-if="updateStatus === 'error'" class="space-y-2">
+          <div class="flex items-center gap-2 text-sm text-destructive">
+            <AlertCircle class="h-4 w-4" />
+            <span>{{ updateError }}</span>
+          </div>
+          <Button variant="outline" size="sm" @click="checkForUpdates">
+            <RefreshCw class="mr-2 h-4 w-4" />
+            Retry
+          </Button>
         </div>
       </CardContent>
     </Card>

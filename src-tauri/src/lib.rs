@@ -24,6 +24,7 @@ use tokio::sync::Mutex;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(EngineState(Arc::new(Mutex::new(None))))
         .manage(RecorderState::new())
         .setup(|app| {
