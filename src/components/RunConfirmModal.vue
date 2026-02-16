@@ -5,6 +5,7 @@ import { usePlaybooksStore } from "../stores/playbooks";
 import type { Broker, PlaybookSummary, LocalPlaybook } from "../types";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { ThumbsUp, ThumbsDown, CheckCircle, XCircle, FileText, Globe } from "lucide-vue-next";
 
 const props = defineProps<{
   brokers: Broker[];
@@ -86,16 +87,7 @@ const allHavePlaybooks = computed(() =>
   props.brokers.every((b) => selections.value[b.id] && selections.value[b.id] !== "")
 );
 
-function selectAllBest() {
-  for (const b of brokersWithPlaybooks.value) {
-    if (playbooksByBroker.value.has(b.id)) {
-      selections.value[b.id] = "best";
-    }
-  }
-}
-
 function handleConfirm() {
-  // Build the playbook selections map
   const playbookSelections: Record<string, string> = {};
   for (const [brokerId, selection] of Object.entries(selections.value)) {
     if (selection) {
@@ -105,17 +97,17 @@ function handleConfirm() {
   emit("confirm", playbookSelections);
 }
 
-function formatScore(pb: PlaybookSummary): string {
-  const net = pb.upvotes - pb.downvotes;
-  const rate =
-    pb.success_count + pb.failure_count > 0
-      ? Math.round(
-          (pb.success_count / (pb.success_count + pb.failure_count)) * 100
-        )
-      : null;
-  let s = `${net >= 0 ? "+" : ""}${net} votes`;
-  if (rate !== null) s += ` \u00b7 ${rate}% success`;
-  return s;
+function successRate(pb: PlaybookSummary): number | null {
+  const total = pb.success_count + pb.failure_count;
+  return total > 0 ? Math.round((pb.success_count / total) * 100) : null;
+}
+
+function isSelected(brokerId: string, value: string): boolean {
+  return selections.value[brokerId] === value;
+}
+
+function select(brokerId: string, value: string) {
+  selections.value[brokerId] = value;
 }
 </script>
 
@@ -124,79 +116,110 @@ function formatScore(pb: PlaybookSummary): string {
     <DialogContent class="max-w-xl max-h-[85vh] flex flex-col">
       <!-- Header -->
       <DialogHeader>
-        <div class="flex items-center justify-between">
-          <div>
-            <DialogTitle>Start Opt-Out Run</DialogTitle>
-            <DialogDescription>
-              {{ brokers.length }} broker{{ brokers.length > 1 ? "s" : "" }} selected
-            </DialogDescription>
-          </div>
-          <div v-if="!loading && brokersWithPlaybooks.length > 1">
-            <Button variant="outline" size="sm" @click="selectAllBest">
-              Use All Best
-            </Button>
-          </div>
-        </div>
+        <DialogTitle>Start Opt-Out Run</DialogTitle>
+        <DialogDescription>
+          {{ brokers.length }} broker{{ brokers.length > 1 ? "s" : "" }} selected
+        </DialogDescription>
       </DialogHeader>
 
       <!-- Content -->
-      <div class="flex-1 overflow-y-auto">
+      <div class="flex-1 overflow-y-auto -mx-1 px-1">
         <div v-if="loading" class="py-8 text-center text-sm text-muted-foreground">
           Checking for playbooks...
         </div>
 
         <template v-else>
-          <!-- Brokers with playbooks -->
-          <div v-if="brokersWithPlaybooks.length > 0" class="mb-4">
-            <h3 class="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Playbooks Available
-            </h3>
-            <div class="space-y-2">
-              <div
-                v-for="broker in brokersWithPlaybooks"
-                :key="broker.id"
-                class="rounded-lg border border-border p-3"
+          <div v-for="broker in brokersWithPlaybooks" :key="broker.id" class="mb-4">
+            <div class="mb-2 flex items-center justify-between">
+              <span class="text-sm font-medium">{{ broker.name }}</span>
+              <span class="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{{ broker.difficulty }}</span>
+            </div>
+
+            <div class="space-y-1.5">
+              <!-- Community: "Best rated" option -->
+              <button
+                v-if="playbooksByBroker.has(broker.id)"
+                class="flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors"
+                :class="isSelected(broker.id, 'best')
+                  ? 'border-primary bg-primary/5'
+                  : 'border-border hover:bg-muted/50'"
+                @click="select(broker.id, 'best')"
               >
-                <div class="mb-2 flex items-center justify-between">
-                  <span class="text-sm font-medium">{{
-                    broker.name
-                  }}</span>
-                  <span class="text-xs text-muted-foreground">{{ broker.difficulty }}</span>
-                </div>
-                <select
-                  :value="selections[broker.id]"
-                  class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                  @change="
-                    selections[broker.id] = (
-                      $event.target as HTMLSelectElement
-                    ).value
-                  "
+                <div class="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border-2"
+                  :class="isSelected(broker.id, 'best') ? 'border-primary bg-primary' : 'border-muted-foreground/30'"
                 >
-                  <!-- Community playbooks -->
-                  <option
-                    v-if="playbooksByBroker.has(broker.id)"
-                    value="best"
-                  >
-                    Best rated community playbook
-                  </option>
-                  <option
-                    v-for="pb in playbooksByBroker.get(broker.id)"
-                    :key="pb.id"
-                    :value="pb.id"
-                  >
-                    v{{ pb.version }} — {{ formatScore(pb) }}
-                    {{ pb.notes ? ` — ${pb.notes.slice(0, 50)}` : "" }}
-                  </option>
-                  <!-- Local playbooks -->
-                  <option
-                    v-for="lp in getLocalPlaybooks(broker.id)"
-                    :key="'local:' + lp.id"
-                    :value="'local:' + lp.id"
-                  >
-                    Local: {{ lp.title || "Untitled" }} — {{ lp.steps.length }} steps
-                  </option>
-                </select>
-              </div>
+                  <div v-if="isSelected(broker.id, 'best')" class="h-1.5 w-1.5 rounded-full bg-primary-foreground" />
+                </div>
+                <Globe class="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+                <div class="min-w-0 flex-1">
+                  <p class="text-sm font-medium">Best rated community playbook</p>
+                  <p class="text-xs text-muted-foreground">Auto-selects the highest scored playbook</p>
+                </div>
+              </button>
+
+              <!-- Community playbook rows -->
+              <button
+                v-for="pb in playbooksByBroker.get(broker.id)"
+                :key="pb.id"
+                class="flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors"
+                :class="isSelected(broker.id, pb.id)
+                  ? 'border-primary bg-primary/5'
+                  : 'border-border hover:bg-muted/50'"
+                @click="select(broker.id, pb.id)"
+              >
+                <div class="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border-2"
+                  :class="isSelected(broker.id, pb.id) ? 'border-primary bg-primary' : 'border-muted-foreground/30'"
+                >
+                  <div v-if="isSelected(broker.id, pb.id)" class="h-1.5 w-1.5 rounded-full bg-primary-foreground" />
+                </div>
+                <Globe class="h-4 w-4 flex-shrink-0 text-blue-500" />
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-2">
+                    <p class="text-sm font-medium">v{{ pb.version }}</p>
+                    <span class="text-xs text-muted-foreground">{{ pb.steps_count }} steps</span>
+                  </div>
+                  <div class="mt-0.5 flex items-center gap-3 text-xs text-muted-foreground">
+                    <span class="flex items-center gap-1">
+                      <ThumbsUp class="h-3 w-3" />{{ pb.upvotes }}
+                    </span>
+                    <span class="flex items-center gap-1">
+                      <ThumbsDown class="h-3 w-3" />{{ pb.downvotes }}
+                    </span>
+                    <span v-if="successRate(pb) !== null" class="flex items-center gap-1">
+                      <CheckCircle class="h-3 w-3 text-green-500" />{{ successRate(pb) }}%
+                    </span>
+                    <span v-if="pb.failure_count > 0" class="flex items-center gap-1">
+                      <XCircle class="h-3 w-3 text-red-500" />{{ pb.failure_count }}
+                    </span>
+                  </div>
+                  <p v-if="pb.notes" class="mt-0.5 truncate text-xs text-muted-foreground">{{ pb.notes }}</p>
+                </div>
+              </button>
+
+              <!-- Local playbook rows -->
+              <button
+                v-for="lp in getLocalPlaybooks(broker.id)"
+                :key="'local:' + lp.id"
+                class="flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors"
+                :class="isSelected(broker.id, 'local:' + lp.id)
+                  ? 'border-primary bg-primary/5'
+                  : 'border-border hover:bg-muted/50'"
+                @click="select(broker.id, 'local:' + lp.id)"
+              >
+                <div class="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border-2"
+                  :class="isSelected(broker.id, 'local:' + lp.id) ? 'border-primary bg-primary' : 'border-muted-foreground/30'"
+                >
+                  <div v-if="isSelected(broker.id, 'local:' + lp.id)" class="h-1.5 w-1.5 rounded-full bg-primary-foreground" />
+                </div>
+                <FileText class="h-4 w-4 flex-shrink-0 text-orange-500" />
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-2">
+                    <p class="text-sm font-medium">{{ lp.title || "Untitled" }}</p>
+                    <span class="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">LOCAL</span>
+                  </div>
+                  <p class="mt-0.5 text-xs text-muted-foreground">{{ lp.steps.length }} steps</p>
+                </div>
+              </button>
             </div>
           </div>
 

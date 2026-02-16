@@ -202,6 +202,7 @@ pub async fn run_opt_outs(
                             id: lp.id,
                             broker_id: lp.broker_id,
                             broker_name: lp.broker_name,
+                            title: lp.title,
                             version: 0,
                             status: "local".to_string(),
                             notes: lp.notes,
@@ -310,6 +311,7 @@ pub async fn run_opt_outs(
                         broker, message, idx, RunStatus::WaitingForUser,
                         Some(UserActionRequired::UserPrompt {
                             message: message.clone(),
+                            description: step.instructions.clone(),
                         }),
                         None,
                     );
@@ -337,6 +339,7 @@ pub async fn run_opt_outs(
                         broker, message, idx, RunStatus::WaitingForUser,
                         Some(UserActionRequired::UserPrompt {
                             message: format!("Please fill out this field in the browser: {}", message),
+                            description: None,
                         }),
                         None,
                     );

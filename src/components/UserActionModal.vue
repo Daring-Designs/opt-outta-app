@@ -33,6 +33,14 @@ const store = useOptOutStore();
         </DialogDescription>
       </DialogHeader>
 
+      <!-- Detailed instructions -->
+      <div
+        v-if="store.actionRequired?.description"
+        class="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300"
+      >
+        {{ store.actionRequired.description }}
+      </div>
+
       <DialogFooter class="flex-row gap-3 sm:flex-row">
         <Button variant="outline" class="flex-1" @click="store.cancelRun()">
           Cancel Run

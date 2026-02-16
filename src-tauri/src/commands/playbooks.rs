@@ -130,11 +130,18 @@ pub async fn refresh_submission_statuses(
     app: tauri::AppHandle,
 ) -> Result<Vec<TrackedSubmission>, String> {
     let subs = submission_tracker::get_all(&app)?;
+    let terminal = ["approved", "rejected"];
     for sub in &subs {
-        if sub.status == "pending_review" {
+        if !terminal.contains(&sub.status.as_str()) {
             if let Ok(new_status) = playbook_api::check_playbook_status(&sub.playbook_id).await {
                 if new_status != sub.status {
                     let _ = submission_tracker::update_status(&app, &sub.playbook_id, &new_status);
+                    // Clean up local draft when approved
+                    if new_status == "approved" {
+                        if let Some(local_id) = &sub.local_playbook_id {
+                            let _ = crate::local_playbooks::delete(&app, local_id);
+                        }
+                    }
                 }
             }
         }

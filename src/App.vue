@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted } from "vue";
 import AppSidebar from "./components/AppSidebar.vue";
+import { Toaster } from "vue-sonner";
 import { useThemeStore } from "./stores/theme";
 
 const themeStore = useThemeStore();
@@ -17,4 +18,5 @@ onMounted(() => {
       <router-view />
     </main>
   </div>
+  <Toaster position="bottom-right" :theme="themeStore.mode === 'dark' ? 'dark' : 'light'" rich-colors />
 </template>

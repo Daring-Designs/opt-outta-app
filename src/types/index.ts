@@ -89,6 +89,7 @@ export interface UserActionRequired {
   type: "solve_captcha" | "verify_email" | "verify_phone" | "manual_step" | "user_prompt";
   captcha_type?: string;
   message: string;
+  description?: string;
 }
 
 export interface OptOutProgress {
@@ -119,6 +120,7 @@ export interface PlaybookStep {
   profile_key: string | null;
   value: string | null;
   description: string;
+  instructions: string | null;
   wait_after_ms: number;
   optional: boolean;
 }
@@ -127,6 +129,7 @@ export interface PlaybookSummary {
   id: string;
   broker_id: string;
   broker_name: string;
+  title: string | null;
   version: number;
   notes: string | null;
   steps_count: number;
@@ -142,6 +145,7 @@ export interface Playbook {
   id: string;
   broker_id: string;
   broker_name: string;
+  title: string | null;
   version: number;
   status: string;
   notes: string | null;
@@ -163,6 +167,7 @@ export interface LocalPlaybook {
   steps: PlaybookStep[];
   createdAt: string;
   updatedAt: string;
+  submittedAt: string | null;
 }
 
 export interface RecordedAction {
@@ -184,6 +189,7 @@ export interface TrackedSubmission {
   broker_name: string;
   status: string;
   submitted_at: string;
+  local_playbook_id: string | null;
 }
 
 export type RecordingStatus = "idle" | "recording" | "reviewing" | "submitting";

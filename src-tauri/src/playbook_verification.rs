@@ -35,7 +35,7 @@ pub fn verify_playbook_signature(playbook: &Playbook) -> Result<(), String> {
 
     let signature = Signature::from_bytes(&sig_array);
 
-    // Build canonical JSON: steps sorted by position, each with 8 keys in alphabetical order
+    // Build canonical JSON: steps sorted by position, each with 9 keys in alphabetical order
     let mut sorted_steps = playbook.steps.clone();
     sorted_steps.sort_by_key(|s| s.position);
 
@@ -45,6 +45,7 @@ pub fn verify_playbook_signature(playbook: &Playbook) -> Result<(), String> {
             serde_json::json!({
                 "action": step.action,
                 "description": step.description,
+                "instructions": step.instructions,
                 "optional": step.optional,
                 "position": step.position,
                 "profile_key": step.profile_key,

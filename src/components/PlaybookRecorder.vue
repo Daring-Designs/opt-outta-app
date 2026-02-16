@@ -4,7 +4,7 @@ import { usePlaybooksStore } from "../stores/playbooks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { ChevronUp, ChevronDown, X, Check } from "lucide-vue-next";
+import { ChevronUp, ChevronDown, X, Check, AlertTriangle, ArrowLeft } from "lucide-vue-next";
 
 const store = usePlaybooksStore();
 const playbookTitle = ref("");
@@ -15,6 +15,24 @@ const submitSuccess = ref<string | null>(null);
 const saving = ref(false);
 const saveSuccess = ref(false);
 const stepListEl = ref<HTMLElement | null>(null);
+const showDiscardConfirm = ref(false);
+const draftSnapshot = ref("");
+
+// Sync local refs when a draft is loaded for editing
+watch(() => store.editingLocalId, (id) => {
+  if (id) {
+    const playbook = store.localPlaybooks.find((p: { id: string }) => p.id === id);
+    if (playbook) {
+      playbookTitle.value = playbook.title ?? "";
+      notes.value = playbook.notes ?? "";
+      draftSnapshot.value = JSON.stringify({
+        title: playbookTitle.value,
+        notes: notes.value,
+        steps: store.editableSteps,
+      });
+    }
+  }
+});
 
 const isActive = computed(
   () => store.isRecording || store.isReviewing || store.recordingStatus === "submitting"
@@ -119,7 +137,28 @@ async function handleSaveLocally() {
   }
 }
 
+function hasUnsavedWork(): boolean {
+  if (store.editingLocalId) {
+    const current = JSON.stringify({
+      title: playbookTitle.value,
+      notes: notes.value,
+      steps: store.editableSteps,
+    });
+    return current !== draftSnapshot.value;
+  }
+  return store.editableSteps.length > 0 || !!playbookTitle.value || !!notes.value;
+}
+
 function handleDiscard() {
+  if (!hasUnsavedWork()) {
+    confirmDiscard();
+    return;
+  }
+  showDiscardConfirm.value = true;
+}
+
+function confirmDiscard() {
+  showDiscardConfirm.value = false;
   playbookTitle.value = "";
   notes.value = "";
   submitError.value = null;
@@ -154,6 +193,34 @@ function handleSuccessDone() {
     </DialogContent>
   </Dialog>
 
+  <!-- Discard confirmation modal -->
+  <Dialog :open="showDiscardConfirm" @update:open="(open: boolean) => { if (!open) showDiscardConfirm = false }">
+    <DialogContent class="max-w-sm">
+      <DialogHeader class="items-center text-center sm:items-center sm:text-center">
+        <div class="flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10">
+          <AlertTriangle class="h-6 w-6 text-destructive" />
+        </div>
+        <DialogTitle>Discard {{ store.editingLocalId ? 'Changes' : 'Steps' }}?</DialogTitle>
+        <DialogDescription>
+          <template v-if="store.editingLocalId">
+            Your unsaved changes will be lost. The saved draft will not be affected.
+          </template>
+          <template v-else>
+            All {{ store.editableSteps.length }} recorded step{{ store.editableSteps.length !== 1 ? 's' : '' }} will be permanently lost.
+          </template>
+        </DialogDescription>
+      </DialogHeader>
+      <DialogFooter class="flex-row gap-3 sm:flex-row">
+        <Button variant="outline" class="flex-1" @click="showDiscardConfirm = false">
+          Cancel
+        </Button>
+        <Button variant="destructive" class="flex-1" @click="confirmDiscard">
+          Discard
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
+
   <!-- Full-screen recording/review overlay -->
   <div
     v-if="isActive && !submitSuccess"
@@ -163,6 +230,12 @@ function handleSuccessDone() {
     <div class="border-b border-border px-6 py-4">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-3">
+          <button
+            class="rounded-lg p-2 text-muted-foreground hover:bg-accent hover:text-foreground"
+            @click="handleDiscard"
+          >
+            <ArrowLeft class="h-5 w-5" />
+          </button>
           <div
             v-if="store.isRecording"
             class="h-3 w-3 animate-pulse rounded-full bg-red-500"
@@ -251,11 +324,11 @@ function handleSuccessDone() {
           <div v-if="step.action === 'user_prompt'">
             <p class="mb-1 text-xs text-muted-foreground">During playback, the user will be prompted to complete this step manually.</p>
             <textarea
-              :value="step.value"
+              :value="step.instructions"
               class="w-full rounded-md border border-input bg-background px-2 py-1 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
               rows="2"
-              placeholder="Instruction for the user (e.g., 'Search for your name and find your profile URL')"
-              @input="store.updateStep(i, { value: ($event.target as HTMLTextAreaElement).value })"
+              placeholder="Detailed instructions for the user (e.g., 'Search for your name, find your profile, and click the removal link')"
+              @input="store.updateStep(i, { instructions: ($event.target as HTMLTextAreaElement).value })"
             />
           </div>
 
@@ -370,8 +443,12 @@ function handleSuccessDone() {
         <p v-if="submitError" class="mb-3 text-sm text-destructive">{{ submitError }}</p>
 
         <div class="flex items-center justify-between">
-          <Button variant="outline" @click="handleDiscard">
-            Discard
+          <Button
+            variant="outline"
+            class="border-destructive/30 text-destructive hover:bg-destructive/10"
+            @click="handleDiscard"
+          >
+            {{ store.editingLocalId ? 'Discard Changes' : 'Discard' }}
           </Button>
           <div class="flex items-center gap-2">
             <span

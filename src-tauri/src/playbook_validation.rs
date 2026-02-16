@@ -4,6 +4,7 @@ const MAX_STEPS: usize = 100;
 const MAX_SELECTOR_LEN: usize = 500;
 const MAX_VALUE_LEN: usize = 2000;
 const MAX_DESCRIPTION_LEN: usize = 500;
+const MAX_INSTRUCTIONS_LEN: usize = 2000;
 const MAX_WAIT_MS: u32 = 30_000;
 
 const ALLOWED_ACTIONS: &[&str] = &[
@@ -122,6 +123,18 @@ fn validate_step(step: &PlaybookStep, ctx: &str) -> Result<(), String> {
             step.description.len(),
             MAX_DESCRIPTION_LEN
         ));
+    }
+
+    // Validate instructions length if present
+    if let Some(ref instructions) = step.instructions {
+        if instructions.len() > MAX_INSTRUCTIONS_LEN {
+            return Err(format!(
+                "{}: Instructions too long ({} chars, max {}).",
+                ctx,
+                instructions.len(),
+                MAX_INSTRUCTIONS_LEN
+            ));
+        }
     }
 
     // Validate profile_key if present
@@ -325,6 +338,7 @@ mod tests {
             profile_key: None,
             value: None,
             description: "Test step".to_string(),
+            instructions: None,
             wait_after_ms: 500,
             optional: false,
         }

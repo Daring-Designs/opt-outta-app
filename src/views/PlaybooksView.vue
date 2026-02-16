@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
+import { useRouter } from "vue-router";
 import { useBrokersStore } from "../stores/brokers";
 import { useHistoryStore } from "../stores/history";
 import { useOptOutStore } from "../stores/optout";
@@ -12,14 +13,17 @@ import RunConfirmModal from "../components/RunConfirmModal.vue";
 import PlaybookRecorder from "../components/PlaybookRecorder.vue";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { ChevronRight, ChevronUp, ChevronDown } from "lucide-vue-next";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { ChevronRight, ChevronUp, ChevronDown, Plus } from "lucide-vue-next";
+import { invoke } from "@tauri-apps/api/core";
+
+const router = useRouter();
 
 const brokersStore = useBrokersStore();
 const historyStore = useHistoryStore();
 const optOutStore = useOptOutStore();
 const playbooksStore = usePlaybooksStore();
 
-const expandedBrokerId = ref<string | null>(null);
 const loadingBrokerId = ref<string | null>(null);
 const runError = ref<string | null>(null);
 
@@ -79,12 +83,12 @@ function brokerHasPlaybooks(brokerId: string): boolean {
 // --- Playbook expand ---
 
 async function toggleExpand(brokerId: string) {
-  if (expandedBrokerId.value === brokerId) {
-    expandedBrokerId.value = null;
+  if (playbooksStore.expandedBrokerId === brokerId) {
+    playbooksStore.expandedBrokerId = null;
     return;
   }
-  expandedBrokerId.value = brokerId;
-  if (!playbooksStore.playbookCache.has(brokerId)) {
+  playbooksStore.expandedBrokerId = brokerId;
+  if (!(brokerId in playbooksStore.playbookCache)) {
     loadingBrokerId.value = brokerId;
     await playbooksStore.fetchPlaybooks(brokerId);
     loadingBrokerId.value = null;
@@ -109,19 +113,75 @@ function editLocalPlaybook(id: string) {
   playbooksStore.loadDraftForEditing(id);
 }
 
-async function deleteLocalPlaybook(id: string) {
-  deletingLocalId.value = id;
+const confirmDeleteId = ref<string | null>(null);
+
+async function confirmDeleteLocalPlaybook() {
+  if (!confirmDeleteId.value) return;
+  deletingLocalId.value = confirmDeleteId.value;
   try {
-    await playbooksStore.deleteLocalPlaybook(id);
+    await playbooksStore.deleteLocalPlaybook(confirmDeleteId.value);
   } finally {
     deletingLocalId.value = null;
+    confirmDeleteId.value = null;
   }
 }
 
 function submitLocalPlaybook(id: string) {
   playbooksStore.loadDraftForEditing(id);
+  playbooksStore.submittingFromLocalId = id;
   // Clear editingLocalId so the recorder treats it as a new community submission
   playbooksStore.editingLocalId = null;
+}
+
+// --- Broker suggestion ---
+
+const showSuggestDialog = ref(false);
+const suggestName = ref("");
+const suggestUrl = ref("");
+const suggestNotes = ref("");
+const suggestSubmitting = ref(false);
+const suggestError = ref<string | null>(null);
+const suggestSuccess = ref(false);
+
+async function handleSuggestBroker() {
+  if (!suggestName.value.trim() || !suggestUrl.value.trim()) return;
+  suggestSubmitting.value = true;
+  suggestError.value = null;
+  try {
+    await invoke("suggest_broker", {
+      name: suggestName.value.trim(),
+      url: suggestUrl.value.trim(),
+      notes: suggestNotes.value.trim(),
+    });
+    suggestSuccess.value = true;
+    suggestName.value = "";
+    suggestUrl.value = "";
+    suggestNotes.value = "";
+  } catch (e) {
+    suggestError.value = String(e);
+  } finally {
+    suggestSubmitting.value = false;
+  }
+}
+
+function closeSuggestDialog() {
+  showSuggestDialog.value = false;
+  suggestSuccess.value = false;
+  suggestError.value = null;
+}
+
+// --- Submission status for local drafts ---
+
+function getSubmissionStatus(localId: string): string | null {
+  const sub = playbooksStore.trackedSubmissions.find(
+    (s) => s.local_playbook_id === localId
+  );
+  return sub?.status ?? null;
+}
+
+function isSubmissionPending(localId: string): boolean {
+  const status = getSubmissionStatus(localId);
+  return !!status && status !== "approved" && status !== "rejected";
 }
 
 // --- Helpers ---
@@ -143,11 +203,17 @@ function difficultyColor(difficulty: string): string {
 <template>
   <div class="mx-auto max-w-5xl">
     <!-- Header -->
-    <div class="mb-6">
-      <h1 class="text-2xl font-bold">Brokers</h1>
-      <p class="mt-1 text-sm text-muted-foreground">
-        View community playbooks, record your own, or run opt-outs.
-      </p>
+    <div class="mb-6 flex items-start justify-between">
+      <div>
+        <h1 class="text-2xl font-bold">Brokers</h1>
+        <p class="mt-1 text-sm text-muted-foreground">
+          View community playbooks, record your own, or run opt-outs.
+        </p>
+      </div>
+      <Button variant="outline" size="sm" class="gap-1.5" @click="showSuggestDialog = true">
+        <Plus class="h-4 w-4" />
+        Suggest Broker
+      </Button>
     </div>
 
     <!-- Filters -->
@@ -198,7 +264,7 @@ function difficultyColor(difficulty: string): string {
             <div class="flex items-center gap-3">
               <ChevronRight
                 class="h-4 w-4 flex-shrink-0 text-muted-foreground transition-transform"
-                :class="{ 'rotate-90': expandedBrokerId === broker.id }"
+                :class="{ 'rotate-90': playbooksStore.expandedBrokerId === broker.id }"
               />
               <div>
                 <div class="text-sm font-medium">
@@ -261,7 +327,7 @@ function difficultyColor(difficulty: string): string {
 
         <!-- Expanded: playbook detail panel -->
         <div
-          v-if="expandedBrokerId === broker.id"
+          v-if="playbooksStore.expandedBrokerId === broker.id"
           class="border-t border-border bg-muted/50 px-4 py-3"
         >
           <!-- Local playbooks section -->
@@ -289,22 +355,46 @@ function difficultyColor(difficulty: string): string {
                     <span class="text-xs text-muted-foreground">{{
                       lp.updatedAt.slice(0, 10)
                     }}</span>
+                    <span
+                      v-if="isSubmissionPending(lp.id)"
+                      class="rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
+                    >
+                      Pending Review
+                    </span>
+                    <span
+                      v-else-if="getSubmissionStatus(lp.id) === 'rejected'"
+                      class="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                    >
+                      Rejected
+                    </span>
                   </div>
                   <div class="flex items-center gap-1">
-                    <Button variant="ghost" size="sm" class="h-7 text-xs" @click.stop="editLocalPlaybook(lp.id)">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      class="h-7 text-xs"
+                      :disabled="isSubmissionPending(lp.id)"
+                      @click.stop="editLocalPlaybook(lp.id)"
+                    >
                       Edit
                     </Button>
-                    <Button variant="ghost" size="sm" class="h-7 text-xs text-green-600" @click.stop="submitLocalPlaybook(lp.id)">
+                    <Button
+                      v-if="!lp.submittedAt"
+                      variant="ghost"
+                      size="sm"
+                      class="h-7 text-xs text-green-600"
+                      @click.stop="submitLocalPlaybook(lp.id)"
+                    >
                       Submit
                     </Button>
                     <Button
                       variant="ghost"
                       size="sm"
                       class="h-7 text-xs text-destructive"
-                      :disabled="deletingLocalId === lp.id"
-                      @click.stop="deleteLocalPlaybook(lp.id)"
+                      :disabled="isSubmissionPending(lp.id)"
+                      @click.stop="confirmDeleteId = lp.id"
                     >
-                      {{ deletingLocalId === lp.id ? "..." : "Delete" }}
+                      Delete
                     </Button>
                   </div>
                 </div>
@@ -351,13 +441,15 @@ function difficultyColor(difficulty: string): string {
             <div
               v-for="pb in playbooksStore.getPlaybooksForBroker(broker.id)"
               :key="pb.id"
-              class="rounded-lg border border-border bg-card p-3"
+              class="cursor-pointer rounded-lg border border-border bg-card p-3 transition-colors hover:bg-accent/50"
+              @click="router.push({ name: 'playbook-detail', params: { id: pb.id } })"
             >
               <div class="flex items-center justify-between">
                 <div class="flex items-center gap-3">
-                  <span class="text-sm font-medium"
-                    >v{{ pb.version }}</span
-                  >
+                  <span class="text-sm font-medium">{{
+                    pb.title || `${pb.broker_name} Playbook`
+                  }}</span>
+                  <span class="text-xs text-muted-foreground">v{{ pb.version }}</span>
                   <span class="text-xs text-muted-foreground"
                     >{{ pb.steps_count }} steps</span
                   >
@@ -369,8 +461,9 @@ function difficultyColor(difficulty: string): string {
                   <!-- Votes -->
                   <div class="flex items-center gap-1">
                     <button
-                      class="rounded p-1 text-muted-foreground hover:text-green-600"
-                      @click="handleVote(pb.id, 'up')"
+                      class="rounded p-1"
+                      :class="playbooksStore.getUserVote(pb.id) === 'up' ? 'text-green-600' : 'text-muted-foreground hover:text-green-600'"
+                      @click.stop="handleVote(pb.id, 'up')"
                     >
                       <ChevronUp class="h-4 w-4" />
                     </button>
@@ -385,8 +478,9 @@ function difficultyColor(difficulty: string): string {
                       {{ pb.upvotes - pb.downvotes }}
                     </span>
                     <button
-                      class="rounded p-1 text-muted-foreground hover:text-red-600"
-                      @click="handleVote(pb.id, 'down')"
+                      class="rounded p-1"
+                      :class="playbooksStore.getUserVote(pb.id) === 'down' ? 'text-red-600' : 'text-muted-foreground hover:text-red-600'"
+                      @click.stop="handleVote(pb.id, 'down')"
                     >
                       <ChevronDown class="h-4 w-4" />
                     </button>
@@ -402,6 +496,8 @@ function difficultyColor(difficulty: string): string {
                       pb.failure_count
                     }}</span>
                   </span>
+
+                  <ChevronRight class="h-4 w-4 text-muted-foreground" />
                 </div>
               </div>
               <p v-if="pb.notes" class="mt-1 text-xs text-muted-foreground">
@@ -444,5 +540,77 @@ function difficultyColor(difficulty: string): string {
     <!-- Opt-out modals -->
     <UserActionModal />
     <OptOutRunner />
+
+    <!-- Delete confirmation dialog -->
+    <Dialog :open="!!confirmDeleteId" @update:open="(open: boolean) => { if (!open) confirmDeleteId = null }">
+      <DialogContent class="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Delete Draft</DialogTitle>
+          <DialogDescription>
+            Are you sure you want to delete this local playbook draft? This cannot be undone.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter class="flex-row gap-3 sm:flex-row">
+          <Button variant="outline" class="flex-1" @click="confirmDeleteId = null">Cancel</Button>
+          <Button variant="destructive" class="flex-1" :disabled="!!deletingLocalId" @click="confirmDeleteLocalPlaybook">
+            {{ deletingLocalId ? "Deleting..." : "Delete" }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <!-- Suggest broker dialog -->
+    <Dialog :open="showSuggestDialog" @update:open="(open: boolean) => { if (!open) closeSuggestDialog() }">
+      <DialogContent class="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Suggest a Broker</DialogTitle>
+          <DialogDescription>
+            Know a data broker that's not in our registry? Let us know and we'll add it.
+          </DialogDescription>
+        </DialogHeader>
+
+        <template v-if="suggestSuccess">
+          <p class="py-4 text-center text-sm text-green-600 font-medium">
+            Thanks! Your suggestion has been submitted.
+          </p>
+          <DialogFooter>
+            <Button class="w-full" @click="closeSuggestDialog">Done</Button>
+          </DialogFooter>
+        </template>
+
+        <template v-else>
+          <div class="space-y-3 py-2">
+            <div>
+              <label class="mb-1 block text-sm font-medium">Broker name</label>
+              <Input v-model="suggestName" placeholder="e.g. Spokeo" />
+            </div>
+            <div>
+              <label class="mb-1 block text-sm font-medium">Website URL</label>
+              <Input v-model="suggestUrl" type="url" placeholder="https://..." />
+            </div>
+            <div>
+              <label class="mb-1 block text-sm font-medium">Notes <span class="font-normal text-muted-foreground">(optional)</span></label>
+              <textarea
+                v-model="suggestNotes"
+                rows="2"
+                class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                placeholder="Opt-out page URL, any details that might help..."
+              />
+            </div>
+            <p v-if="suggestError" class="text-sm text-destructive">{{ suggestError }}</p>
+          </div>
+          <DialogFooter class="flex-row gap-3 sm:flex-row">
+            <Button variant="outline" class="flex-1" @click="closeSuggestDialog">Cancel</Button>
+            <Button
+              class="flex-1"
+              :disabled="suggestSubmitting || !suggestName.trim() || !suggestUrl.trim()"
+              @click="handleSuggestBroker"
+            >
+              {{ suggestSubmitting ? "Submitting..." : "Submit" }}
+            </Button>
+          </DialogFooter>
+        </template>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>

@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
-import { ref, computed } from "vue";
+import { ref, shallowRef, computed } from "vue";
 import { invoke } from "@tauri-apps/api/core";
+import { toast } from "vue-sonner";
 import type {
   RecordedAction,
   PlaybookStep,
@@ -26,13 +27,23 @@ export const usePlaybooksStore = defineStore("playbooks", () => {
   const pollingInterval = ref<ReturnType<typeof setInterval> | null>(null);
 
   // Playbook browsing state
-  const playbookCache = ref<Map<string, PlaybookSummary[]>>(new Map());
+  const playbookCache = shallowRef<Record<string, PlaybookSummary[]>>({});
   const selectedPlaybook = ref<Playbook | null>(null);
   const loadingPlaybooks = ref(false);
+  const expandedBrokerId = ref<string | null>(null);
+
+  // Vote tracking (persisted to localStorage)
+  const userVotes = ref<Record<string, "up" | "down">>(
+    JSON.parse(localStorage.getItem("opt-outta-votes") || "{}")
+  );
+  function persistVotes() {
+    localStorage.setItem("opt-outta-votes", JSON.stringify(userVotes.value));
+  }
 
   // Local playbook state
   const localPlaybooks = ref<LocalPlaybook[]>([]);
   const editingLocalId = ref<string | null>(null);
+  const submittingFromLocalId = ref<string | null>(null);
 
   // Submission tracker state
   const trackedSubmissions = ref<TrackedSubmission[]>([]);
@@ -113,6 +124,7 @@ export const usePlaybooksStore = defineStore("playbooks", () => {
       profile_key: a.profile_key,
       value: a.value ?? a.url,
       description: generateDescription(a),
+      instructions: null,
       wait_after_ms: 500,
       optional: false,
     }));
@@ -169,6 +181,7 @@ export const usePlaybooksStore = defineStore("playbooks", () => {
       profile_key: null,
       value: null,
       description: "",
+      instructions: null,
       wait_after_ms: 1000,
       optional: false,
     });
@@ -248,6 +261,8 @@ export const usePlaybooksStore = defineStore("playbooks", () => {
       }
 
       if (step.description.length > 500) return `${ctx}: Description too long.`;
+
+      if (step.instructions && step.instructions.length > 2000) return `${ctx}: Instructions too long.`;
     }
 
     return null;
@@ -261,7 +276,7 @@ export const usePlaybooksStore = defineStore("playbooks", () => {
     const ssnRe = /\b\d{3}-\d{2}-\d{4}\b/;
 
     for (const step of steps) {
-      for (const field of [step.value, step.description]) {
+      for (const field of [step.value, step.description, step.instructions]) {
         if (!field) continue;
         if (emailRe.test(field)) return "An email address was detected in the steps. Please remove it before submitting.";
         if (phoneRe.test(field)) return "A phone number was detected in the steps. Please remove it before submitting.";
@@ -300,9 +315,15 @@ export const usePlaybooksStore = defineStore("playbooks", () => {
         broker_name: recordingBrokerName.value!,
         status: result.status,
         submitted_at: new Date().toISOString(),
+        local_playbook_id: submittingFromLocalId.value,
       };
       await invoke("track_submission", { submission: tracked });
       trackedSubmissions.value = [...trackedSubmissions.value, tracked];
+
+      // Mark the local draft as submitted if applicable
+      if (submittingFromLocalId.value) {
+        await markLocalAsSubmitted(submittingFromLocalId.value);
+      }
 
       resetRecording();
       return result.message;
@@ -324,7 +345,19 @@ export const usePlaybooksStore = defineStore("playbooks", () => {
     editableSteps.value = [];
     playbookTitle.value = null;
     editingLocalId.value = null;
+    submittingFromLocalId.value = null;
     seenActionCount.value = 0;
+  }
+
+  async function markLocalAsSubmitted(id: string): Promise<void> {
+    const existing = localPlaybooks.value.find((p) => p.id === id);
+    if (!existing) return;
+    const updated: LocalPlaybook = {
+      ...existing,
+      submittedAt: new Date().toISOString(),
+    };
+    await invoke("save_local_playbook", { playbook: updated });
+    localPlaybooks.value = localPlaybooks.value.map((p) => (p.id === id ? updated : p));
   }
 
   // --- Playbook browsing ---
@@ -333,9 +366,9 @@ export const usePlaybooksStore = defineStore("playbooks", () => {
     loadingPlaybooks.value = true;
     try {
       const list = await invoke<PlaybookSummary[]>("fetch_playbooks", { brokerId });
-      playbookCache.value.set(brokerId, list);
-    } catch {
-      // Network errors are non-fatal for browsing
+      playbookCache.value = { ...playbookCache.value, [brokerId]: list };
+    } catch (e) {
+      toast.error("Failed to load playbooks", { description: String(e) });
     } finally {
       loadingPlaybooks.value = false;
     }
@@ -346,12 +379,72 @@ export const usePlaybooksStore = defineStore("playbooks", () => {
     selectedPlaybook.value = detail;
   }
 
+  const votingInProgress = new Set<string>();
+
+  function getUserVote(id: string): "up" | "down" | null {
+    return userVotes.value[id] ?? null;
+  }
+
   async function voteOnPlaybook(id: string, vote: "up" | "down") {
-    await invoke("vote_on_playbook", { id, vote });
+    if (votingInProgress.has(id)) return;
+    votingInProgress.add(id);
+
+    const existing = userVotes.value[id];
+
+    function applyCacheDelta(field: "upvotes" | "downvotes", delta: 1 | -1) {
+      const cache = { ...playbookCache.value };
+      for (const brokerId of Object.keys(cache)) {
+        const list = cache[brokerId];
+        if (list.some((p) => p.id === id)) {
+          cache[brokerId] = list.map((p) =>
+            p.id === id ? { ...p, [field]: p[field] + delta } : p
+          );
+          break;
+        }
+      }
+      playbookCache.value = cache;
+    }
+
+    // Three cases:
+    // 1. Same arrow as existing vote → undo (remove vote)
+    // 2. Opposite arrow from existing vote → just undo existing (return to neutral)
+    // 3. No existing vote → apply the vote
+
+    // Same arrow as existing vote → do nothing
+    if (existing === vote) {
+      votingInProgress.delete(id);
+      return;
+    }
+
+    const undoVote = existing ?? null;
+    const applyVote = !existing ? vote : null;
+
+    try {
+      // Undo existing vote if any
+      if (undoVote) {
+        const undoField = undoVote === "up" ? "upvotes" as const : "downvotes" as const;
+        const { [id]: _, ...rest } = userVotes.value;
+        userVotes.value = rest;
+        persistVotes();
+        applyCacheDelta(undoField, -1);
+        invoke("vote_on_playbook", { id, vote: "none" }).catch(() => {});
+      }
+
+      // Apply new vote only if there was no prior vote
+      if (applyVote) {
+        const applyField = applyVote === "up" ? "upvotes" as const : "downvotes" as const;
+        userVotes.value = { ...userVotes.value, [id]: applyVote };
+        persistVotes();
+        applyCacheDelta(applyField, 1);
+        invoke("vote_on_playbook", { id, vote: applyVote }).catch(() => {});
+      }
+    } finally {
+      votingInProgress.delete(id);
+    }
   }
 
   function getPlaybooksForBroker(brokerId: string): PlaybookSummary[] {
-    return playbookCache.value.get(brokerId) ?? [];
+    return playbookCache.value[brokerId] ?? [];
   }
 
   // --- Local playbooks ---
@@ -377,6 +470,7 @@ export const usePlaybooksStore = defineStore("playbooks", () => {
       steps: editableSteps.value,
       createdAt: now,
       updatedAt: now,
+      submittedAt: null,
     };
     await invoke("save_local_playbook", { playbook });
     localPlaybooks.value = [...localPlaybooks.value, playbook];
@@ -432,7 +526,10 @@ export const usePlaybooksStore = defineStore("playbooks", () => {
 
   async function refreshSubmissionStatuses() {
     try {
-      trackedSubmissions.value = await invoke<TrackedSubmission[]>("refresh_submission_statuses");
+      const updated = await invoke<TrackedSubmission[]>("refresh_submission_statuses");
+      trackedSubmissions.value = updated;
+      // Reload local playbooks in case any were cleaned up after approval
+      await loadLocalPlaybooks();
     } catch {
       // Non-fatal — API may be unreachable
     }
@@ -463,9 +560,11 @@ export const usePlaybooksStore = defineStore("playbooks", () => {
     addUserPromptStep,
     submitPlaybook,
     resetRecording,
-    // Browsing actions
+    // Browsing state + actions
+    expandedBrokerId,
     fetchPlaybooks,
     fetchPlaybookDetail,
+    getUserVote,
     voteOnPlaybook,
     getPlaybooksForBroker,
     // Validation
@@ -473,6 +572,7 @@ export const usePlaybooksStore = defineStore("playbooks", () => {
     // Local playbook state + actions
     localPlaybooks,
     editingLocalId,
+    submittingFromLocalId,
     loadLocalPlaybooks,
     // Submission tracker
     trackedSubmissions,

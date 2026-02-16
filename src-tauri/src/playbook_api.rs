@@ -1,9 +1,10 @@
 use crate::models::{ApiEnvelope, Playbook, PlaybookReport, PlaybookSubmission, PlaybookSubmitResponse, PlaybookSummary};
 use ed25519_dalek::{SigningKey, Signer};
 use base64::{engine::general_purpose::STANDARD, Engine};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const API_BASE: &str = "https://opt-outta.com/api/v1";
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Ed25519 signing key, embedded at compile time via `API_PRIVATE_KEY` env var.
 /// Falls back to a dummy key for local dev builds (API calls will be rejected by the server).
@@ -11,10 +12,12 @@ static SIGNING_KEY: std::sync::LazyLock<SigningKey> = std::sync::LazyLock::new(|
     let key_b64 = option_env!("API_PRIVATE_KEY")
         .unwrap_or("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
     let key_bytes = STANDARD.decode(key_b64).expect("API_PRIVATE_KEY must be valid base64");
-    let key_array: [u8; 32] = key_bytes
+    // Sodium secret keys are 64 bytes (32-byte seed + 32-byte public key).
+    // ed25519-dalek expects just the 32-byte seed.
+    let seed: [u8; 32] = key_bytes[..32]
         .try_into()
-        .expect("API_PRIVATE_KEY must decode to exactly 32 bytes");
-    SigningKey::from_bytes(&key_array)
+        .expect("API_PRIVATE_KEY must be at least 32 bytes");
+    SigningKey::from_bytes(&seed)
 });
 
 // ---------------------------------------------------------------------------
@@ -63,7 +66,10 @@ async fn signed_get(url: &str) -> Result<reqwest::Response, String> {
     let path = url_path(url);
     let (signature, timestamp) = sign_request("GET", &path, "");
 
-    reqwest::Client::new()
+    reqwest::Client::builder()
+        .timeout(REQUEST_TIMEOUT)
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {}", e))?
         .get(url)
         .header("X-Signature", signature)
         .header("X-Timestamp", timestamp)
@@ -77,7 +83,10 @@ async fn signed_post(url: &str, body: &str) -> Result<reqwest::Response, String>
     let path = url_path(url);
     let (signature, timestamp) = sign_request("POST", &path, body);
 
-    reqwest::Client::new()
+    reqwest::Client::builder()
+        .timeout(REQUEST_TIMEOUT)
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {}", e))?
         .post(url)
         .header("X-Signature", signature)
         .header("X-Timestamp", timestamp)
@@ -181,15 +190,18 @@ pub async fn submit_playbook(submission: &PlaybookSubmission) -> Result<Playbook
 
     let response = signed_post(&url, &body).await?;
 
-    if !response.status().is_success() {
-        let status = response.status();
-        let resp_body = response.text().await.unwrap_or_default();
+    let status = response.status();
+    let resp_body = response.text().await.unwrap_or_default();
+
+    if !status.is_success() {
         return Err(format!("Playbook submit error ({}): {}", status, resp_body));
     }
 
-    let envelope: ApiEnvelope<PlaybookSubmitResponse> = response
-        .json()
-        .await
+    if resp_body.trim_start().starts_with('<') {
+        return Err("Server returned HTML instead of JSON — the submit endpoint may not be deployed yet.".to_string());
+    }
+
+    let envelope: ApiEnvelope<PlaybookSubmitResponse> = serde_json::from_str(&resp_body)
         .map_err(|e| format!("Failed to parse submit response: {}", e))?;
 
     Ok(envelope.data)

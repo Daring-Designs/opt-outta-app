@@ -207,7 +207,7 @@ pub enum UserActionRequired {
     #[serde(rename = "manual_step")]
     ManualStep { message: String },
     #[serde(rename = "user_prompt")]
-    UserPrompt { message: String },
+    UserPrompt { message: String, description: Option<String> },
 }
 
 /// Status of an individual broker submission
@@ -265,6 +265,8 @@ pub struct PlaybookStep {
     pub profile_key: Option<String>,
     pub value: Option<String>,
     pub description: String,
+    #[serde(default)]
+    pub instructions: Option<String>,
     #[serde(default = "default_wait_after")]
     pub wait_after_ms: u32,
     #[serde(default)]
@@ -281,6 +283,8 @@ pub struct Playbook {
     pub id: String,
     pub broker_id: String,
     pub broker_name: String,
+    #[serde(default)]
+    pub title: Option<String>,
     pub version: u32,
     pub status: String,
     pub notes: Option<String>,
@@ -299,6 +303,8 @@ pub struct PlaybookSummary {
     pub id: String,
     pub broker_id: String,
     pub broker_name: String,
+    #[serde(default)]
+    pub title: Option<String>,
     pub version: u32,
     pub notes: Option<String>,
     pub steps_count: u32,
@@ -365,6 +371,8 @@ pub struct LocalPlaybook {
     pub created_at: String,
     #[serde(rename = "updatedAt")]
     pub updated_at: String,
+    #[serde(rename = "submittedAt", default)]
+    pub submitted_at: Option<String>,
 }
 
 /// Storage wrapper for local playbooks
@@ -383,6 +391,8 @@ pub struct TrackedSubmission {
     pub broker_name: String,
     pub status: String,
     pub submitted_at: String,
+    #[serde(default)]
+    pub local_playbook_id: Option<String>,
 }
 
 /// Storage wrapper for tracked submissions
