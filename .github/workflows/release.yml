@@ -10,7 +10,20 @@ permissions:
   contents: write
 
 jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --title "Opt-Outta ${{ github.ref_name }}" \
+            --notes "See the assets below to download and install." \
+            --repo "${{ github.repository }}" || true
+
   build:
+    needs: create-release
     strategy:
       fail-fast: false
       matrix:
@@ -67,22 +80,14 @@ jobs:
         run: npm ci
 
       - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           API_PRIVATE_KEY: ${{ secrets.API_PRIVATE_KEY }}
           PLAYBOOK_PUBLIC_KEY: ${{ secrets.PLAYBOOK_PUBLIC_KEY }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "Opt-Outta ${{ github.ref_name }}"
-          releaseBody: "See the assets below to download and install."
-          releaseDraft: false
-          prerelease: false
-          args: --target ${{ matrix.target }}
+        run: npx tauri build --target ${{ matrix.target }}
 
-      - name: Upload updater bundles and save sigs
+      - name: Upload assets and collect sigs
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -92,37 +97,53 @@ jobs:
           target="${{ matrix.target }}"
           base="src-tauri/target/${target}/release/bundle"
 
-          echo "=== Listing bundle dir ==="
-          ls -R "$base" 2>/dev/null | head -60 || echo "Bundle dir not found at $base"
+          echo "=== Bundle directory contents ==="
+          ls -R "$base" 2>/dev/null | head -80 || echo "Bundle dir not found at $base"
 
           mkdir -p updater-sigs
 
           if [ "${{ matrix.platform }}" = "macos-latest" ]; then
-            sig="${base}/macos/Opt-Outta.app.tar.gz.sig"
-            echo "Looking for: $sig"
-            if [ -f "$sig" ]; then
-              cp "$sig" "Opt-Outta_universal.app.tar.gz.sig"
-              gh release upload "$tag" "Opt-Outta_universal.app.tar.gz.sig" --clobber
-              cp "$sig" "updater-sigs/${{ matrix.updater_key }}.sig"
-            else
-              echo "Warning: macOS sig not found"
-            fi
+            # Upload .dmg installer
+            for f in "$base"/dmg/*.dmg; do
+              [ -f "$f" ] && gh release upload "$tag" "$f" --clobber --repo "${{ github.repository }}"
+            done
+
+            # Upload updater bundle (.app.tar.gz) and collect sig
+            targz="$base/macos/Opt-Outta.app.tar.gz"
+            sig="${targz}.sig"
+            [ -f "$targz" ] && gh release upload "$tag" "$targz" --clobber --repo "${{ github.repository }}"
+            [ -f "$sig" ] && cp "$sig" "updater-sigs/${{ matrix.updater_key }}.sig"
           fi
 
           if [ "${{ matrix.platform }}" = "ubuntu-22.04" ]; then
-            bundle="${base}/appimage/Opt-Outta_${version}_amd64.AppImage.tar.gz"
-            sig="${bundle}.sig"
-            echo "Looking for: $bundle and $sig"
-            [ -f "$bundle" ] && gh release upload "$tag" "$bundle" --clobber
-            [ -f "$sig" ] && gh release upload "$tag" "$sig" --clobber && cp "$sig" "updater-sigs/${{ matrix.updater_key }}.sig"
+            # Upload .deb installer
+            for f in "$base"/deb/*.deb; do
+              [ -f "$f" ] && gh release upload "$tag" "$f" --clobber --repo "${{ github.repository }}"
+            done
+
+            # Upload standalone .AppImage
+            for f in "$base"/appimage/*.AppImage; do
+              [ -f "$f" ] && gh release upload "$tag" "$f" --clobber --repo "${{ github.repository }}"
+            done
+
+            # Upload updater bundle (.AppImage.tar.gz) and collect sig
+            targz="$base/appimage/opt-outta_${version}_amd64.AppImage.tar.gz"
+            sig="${targz}.sig"
+            [ -f "$targz" ] && gh release upload "$tag" "$targz" --clobber --repo "${{ github.repository }}"
+            [ -f "$sig" ] && cp "$sig" "updater-sigs/${{ matrix.updater_key }}.sig"
           fi
 
           if [ "${{ matrix.platform }}" = "windows-latest" ]; then
-            bundle="${base}/nsis/Opt-Outta_${version}_x64-setup.nsis.zip"
+            # Upload .exe installer
+            for f in "$base"/nsis/*.exe; do
+              [ -f "$f" ] && gh release upload "$tag" "$f" --clobber --repo "${{ github.repository }}"
+            done
+
+            # Upload updater bundle (.nsis.zip) and collect sig
+            bundle="$base/nsis/Opt-Outta_${version}_x64-setup.nsis.zip"
             sig="${bundle}.sig"
-            echo "Looking for: $bundle and $sig"
-            [ -f "$bundle" ] && gh release upload "$tag" "$bundle" --clobber
-            [ -f "$sig" ] && gh release upload "$tag" "$sig" --clobber && cp "$sig" "updater-sigs/${{ matrix.updater_key }}.sig"
+            [ -f "$bundle" ] && gh release upload "$tag" "$bundle" --clobber --repo "${{ github.repository }}"
+            [ -f "$sig" ] && cp "$sig" "updater-sigs/${{ matrix.updater_key }}.sig"
           fi
 
           echo "=== Collected sigs ==="
@@ -133,6 +154,7 @@ jobs:
         with:
           name: updater-sig-${{ matrix.label }}
           path: updater-sigs/
+          if-no-files-found: warn
 
   updater-json:
     needs: build
@@ -145,6 +167,9 @@ jobs:
           pattern: updater-sig-*
           merge-multiple: true
           path: sigs
+
+      - name: List collected sigs
+        run: ls -la sigs/ 2>/dev/null || echo "No sigs directory"
 
       - name: Create and upload latest.json
         env:
@@ -167,9 +192,9 @@ jobs:
             --arg notes "See the assets below to download and install." \
             --arg pub_date "$date" \
             --arg darwin_sig "$darwin_sig" \
-            --arg darwin_url "${base}/Opt-Outta_universal.app.tar.gz" \
+            --arg darwin_url "${base}/Opt-Outta.app.tar.gz" \
             --arg linux_sig "$linux_sig" \
-            --arg linux_url "${base}/Opt-Outta_${version}_amd64.AppImage.tar.gz" \
+            --arg linux_url "${base}/opt-outta_${version}_amd64.AppImage.tar.gz" \
             --arg windows_sig "$windows_sig" \
             --arg windows_url "${base}/Opt-Outta_${version}_x64-setup.nsis.zip" \
             '{
