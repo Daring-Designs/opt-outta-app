@@ -67,3 +67,133 @@ pub fn verify_playbook_signature(playbook: &Playbook) -> Result<(), String> {
         .verify_strict(canonical_json.as_bytes(), &signature)
         .map_err(|_| "Playbook signature verification failed".to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::PlaybookStep;
+
+    fn spokeo_steps() -> Vec<PlaybookStep> {
+        vec![
+            PlaybookStep {
+                position: 1,
+                action: "user_prompt".to_string(),
+                selector: None,
+                profile_key: None,
+                value: Some("Search for your Profile URL in the search bar at the top of the page.\nProfile URL Example: \"https://www.spokeo.com/Smith-Sample/Houston/TX/p12345678\"".to_string()),
+                description: "Search For Profile URL".to_string(),
+                instructions: Some("Search for your name in the database using the search bar on the top of the page to get your profile URL.".to_string()),
+                wait_after_ms: 1000,
+                optional: false,
+            },
+            PlaybookStep {
+                position: 2,
+                action: "fill".to_string(),
+                selector: Some("input[name=\"url\"]".to_string()),
+                profile_key: None,
+                value: None,
+                description: "Enter URL in URL".to_string(),
+                instructions: None,
+                wait_after_ms: 500,
+                optional: false,
+            },
+            PlaybookStep {
+                position: 3,
+                action: "fill".to_string(),
+                selector: Some("input[name=\"email\"]".to_string()),
+                profile_key: Some("email".to_string()),
+                value: None,
+                description: "Enter email in Email Address".to_string(),
+                instructions: None,
+                wait_after_ms: 500,
+                optional: false,
+            },
+            PlaybookStep {
+                position: 4,
+                action: "captcha".to_string(),
+                selector: None,
+                profile_key: None,
+                value: None,
+                description: "Solve CAPTCHA".to_string(),
+                instructions: None,
+                wait_after_ms: 500,
+                optional: false,
+            },
+            PlaybookStep {
+                position: 5,
+                action: "click".to_string(),
+                selector: Some("#root > div:nth-of-type(2) > div:nth-of-type(2) > div > div > form > div:nth-of-type(4) > button".to_string()),
+                profile_key: None,
+                value: None,
+                description: "Click \"OPT OUT\"".to_string(),
+                instructions: None,
+                wait_after_ms: 500,
+                optional: false,
+            },
+            PlaybookStep {
+                position: 6,
+                action: "user_prompt".to_string(),
+                selector: None,
+                profile_key: None,
+                value: Some("Check email for confirmation link and click on it to see confirmation below the form.".to_string()),
+                description: "Check Email".to_string(),
+                instructions: Some("Check email for link to click on. When you click on the link you should see a verification that it worked below the form.".to_string()),
+                wait_after_ms: 1000,
+                optional: false,
+            },
+        ]
+    }
+
+    #[test]
+    fn test_canonical_json_matches_php() {
+        let steps = spokeo_steps();
+
+        let canonical_steps: Vec<serde_json::Value> = steps
+            .iter()
+            .map(|step| {
+                serde_json::json!({
+                    "action": step.action,
+                    "description": step.description,
+                    "instructions": step.instructions,
+                    "optional": step.optional,
+                    "position": step.position,
+                    "profile_key": step.profile_key,
+                    "selector": step.selector,
+                    "value": step.value,
+                    "wait_after_ms": step.wait_after_ms
+                })
+            })
+            .collect();
+
+        let canonical_json = serde_json::to_string(&canonical_steps).unwrap();
+        let canonical_json = canonical_json.replace("/", "\\/");
+
+        // Verify first step format matches PHP json_encode output
+        assert!(canonical_json.starts_with(r#"[{"action":"user_prompt","description":"Search For Profile URL""#));
+        assert!(canonical_json.contains(r#"https:\/\/www.spokeo.com"#));
+        assert_eq!(canonical_json.len(), 1640);
+    }
+
+    #[test]
+    fn test_signature_verification() {
+        let playbook = Playbook {
+            id: "019c6563-c451-7357-8960-f96adb3d0916".to_string(),
+            broker_id: "spokeo".to_string(),
+            broker_name: "Spokeo".to_string(),
+            title: Some("Admin Created".to_string()),
+            version: 1,
+            status: "approved".to_string(),
+            notes: None,
+            steps: spokeo_steps(),
+            signature: Some("nP+0GxNFT5r32DwMnwBPjjGrjluwXmSmu40RtnLHj1T2k54DemnZZ+o9IORIpQsDxJoaNhCM0ttZ2g46JcknCQ==".to_string()),
+            upvotes: 2,
+            downvotes: 0,
+            success_count: 0,
+            failure_count: 0,
+            created_at: "2025-01-01T00:00:00Z".to_string(),
+        };
+
+        let result = verify_playbook_signature(&playbook);
+        assert!(result.is_ok(), "Signature verification failed: {:?}", result.err());
+    }
+}
