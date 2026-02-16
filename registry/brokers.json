@@ -1,0 +1,442 @@
+{
+  "version": "2026.02.15.2",
+  "brokers": [
+    {
+      "id": "spokeo",
+      "name": "Spokeo",
+      "url": "https://www.spokeo.com",
+      "category": "people-search",
+      "method": "web-form",
+      "opt_out_url": "https://www.spokeo.com/optout",
+      "known_fields": [
+        { "label": "Profile URL", "type": "text", "profile_key": null },
+        { "label": "Email", "type": "email", "profile_key": "email" }
+      ],
+      "notes": "Requires you to find your profile URL first via search, then paste it into the opt-out form.",
+      "requires_verification": "email",
+      "relist_days": 90,
+      "difficulty": "medium",
+      "last_verified": "2026-02-01"
+    },
+    {
+      "id": "beenverified",
+      "name": "BeenVerified",
+      "url": "https://www.beenverified.com",
+      "category": "people-search",
+      "method": "web-form",
+      "opt_out_url": "https://www.beenverified.com/app/optout/search",
+      "known_fields": [
+        { "label": "First Name", "type": "text", "profile_key": "firstName" },
+        { "label": "Last Name", "type": "text", "profile_key": "lastName" },
+        { "label": "State", "type": "select", "profile_key": "state" }
+      ],
+      "notes": "Search for your listing, select it, then submit the removal request. Also covers PeopleLooker and PeopleSmart (same owner).",
+      "requires_verification": "email",
+      "relist_days": 60,
+      "difficulty": "medium",
+      "last_verified": "2026-01-20"
+    },
+    {
+      "id": "whitepages",
+      "name": "WhitePages",
+      "url": "https://www.whitepages.com",
+      "category": "people-search",
+      "method": "web-form",
+      "opt_out_url": "https://www.whitepages.com/suppression-requests",
+      "known_fields": [
+        { "label": "Name", "type": "text", "profile_key": "firstName" },
+        { "label": "Phone", "type": "tel", "profile_key": "phone" }
+      ],
+      "notes": "Find your listing on WhitePages first, then use the suppression request form. Phone verification required.",
+      "requires_verification": "phone",
+      "relist_days": 90,
+      "difficulty": "hard",
+      "last_verified": "2026-01-15"
+    },
+    {
+      "id": "truepeoplesearch",
+      "name": "TruePeopleSearch",
+      "url": "https://www.truepeoplesearch.com",
+      "category": "people-search",
+      "method": "web-form",
+      "opt_out_url": "https://www.truepeoplesearch.com/removal",
+      "known_fields": [
+        { "label": "Record Link", "type": "text", "profile_key": null }
+      ],
+      "notes": "Search for your name, find your listing, click 'Remove This Record'. Quick and straightforward.",
+      "requires_verification": null,
+      "relist_days": 60,
+      "difficulty": "easy",
+      "last_verified": "2026-02-05"
+    },
+    {
+      "id": "intelius",
+      "name": "Intelius",
+      "url": "https://www.intelius.com",
+      "category": "background-check",
+      "method": "web-form",
+      "opt_out_url": "https://suppression.peopleconnect.us/login",
+      "known_fields": [
+        { "label": "First Name", "type": "text", "profile_key": "firstName" },
+        { "label": "Last Name", "type": "text", "profile_key": "lastName" },
+        { "label": "Date of Birth", "type": "date", "profile_key": "dob" },
+        { "label": "Email", "type": "email", "profile_key": "email" }
+      ],
+      "notes": "Uses PeopleConnect suppression portal. Also covers ZabaSearch, AnyWho, and Addresses.com (same owner). Multi-step: enter email, verify, search, select listing, confirm deletion.",
+      "requires_verification": "email",
+      "relist_days": 90,
+      "difficulty": "medium",
+      "last_verified": "2026-01-25"
+    },
+    {
+      "id": "radaris",
+      "name": "Radaris",
+      "url": "https://radaris.com",
+      "category": "data-aggregator",
+      "method": "web-form",
+      "opt_out_url": "https://radaris.com/control/privacy",
+      "known_fields": [
+        { "label": "First Name", "type": "text", "profile_key": "firstName" },
+        { "label": "Last Name", "type": "text", "profile_key": "lastName" },
+        { "label": "Email", "type": "email", "profile_key": "email" }
+      ],
+      "notes": "Requires account creation to manage privacy settings. Can be slow to process removal.",
+      "requires_verification": "email",
+      "relist_days": 30,
+      "difficulty": "hard",
+      "last_verified": "2026-01-10"
+    },
+    {
+      "id": "nuwber",
+      "name": "Nuwber",
+      "url": "https://nuwber.com",
+      "category": "data-aggregator",
+      "method": "web-form",
+      "opt_out_url": "https://nuwber.com/removal/link",
+      "known_fields": [
+        { "label": "Profile URL", "type": "text", "profile_key": null },
+        { "label": "Email", "type": "email", "profile_key": "email" }
+      ],
+      "notes": "Find your profile URL, paste it along with email. Verification email sent.",
+      "requires_verification": "email",
+      "relist_days": 60,
+      "difficulty": "medium",
+      "last_verified": "2026-01-18"
+    },
+    {
+      "id": "thatsthem",
+      "name": "ThatsThem",
+      "url": "https://thatsthem.com",
+      "category": "data-aggregator",
+      "method": "web-form",
+      "opt_out_url": "https://thatsthem.com/optout",
+      "known_fields": [
+        { "label": "First Name", "type": "text", "profile_key": "firstName" },
+        { "label": "Last Name", "type": "text", "profile_key": "lastName" },
+        { "label": "Record", "type": "text", "profile_key": null }
+      ],
+      "notes": "Relatively simple opt-out. Search for your record, select it, submit removal.",
+      "requires_verification": null,
+      "relist_days": 90,
+      "difficulty": "easy",
+      "last_verified": "2026-02-01"
+    },
+    {
+      "id": "peoplefinder",
+      "name": "PeopleFinder",
+      "url": "https://www.peoplefinder.com",
+      "category": "background-check",
+      "method": "web-form",
+      "opt_out_url": "https://www.peoplefinder.com/optout",
+      "known_fields": [
+        { "label": "First Name", "type": "text", "profile_key": "firstName" },
+        { "label": "Last Name", "type": "text", "profile_key": "lastName" },
+        { "label": "City", "type": "text", "profile_key": "city" },
+        { "label": "State", "type": "select", "profile_key": "state" }
+      ],
+      "notes": "Search for listing, select it, solve CAPTCHA, submit removal.",
+      "requires_verification": "captcha",
+      "relist_days": 60,
+      "difficulty": "medium",
+      "last_verified": "2026-01-22"
+    },
+    {
+      "id": "ussearch",
+      "name": "USSearch",
+      "url": "https://www.ussearch.com",
+      "category": "background-check",
+      "method": "email",
+      "opt_out_url": "https://www.ussearch.com/privacy-policy",
+      "known_fields": [
+        { "label": "Full Name", "type": "text", "profile_key": "firstName" },
+        { "label": "Email", "type": "email", "profile_key": "email" },
+        { "label": "Address", "type": "text", "profile_key": "address" }
+      ],
+      "notes": "Email-based removal. Send opt-out request to their privacy email with your details.",
+      "requires_verification": "email",
+      "relist_days": null,
+      "difficulty": "easy",
+      "last_verified": "2026-01-28"
+    },
+    {
+      "id": "mylife",
+      "name": "MyLife",
+      "url": "https://www.mylife.com",
+      "category": "people-search",
+      "method": "web-form",
+      "opt_out_url": "https://www.mylife.com/ccpa/index.pubview",
+      "known_fields": [
+        { "label": "Profile URL", "type": "text", "profile_key": null },
+        { "label": "Email", "type": "email", "profile_key": "email" }
+      ],
+      "notes": "Search for your profile URL first, then paste it into the opt-out form. Processing takes 1-2 weeks. Can also email privacy@mylife.com.",
+      "requires_verification": "email",
+      "relist_days": 90,
+      "difficulty": "medium",
+      "last_verified": "2026-02-10"
+    },
+    {
+      "id": "fastpeoplesearch",
+      "name": "FastPeopleSearch",
+      "url": "https://www.fastpeoplesearch.com",
+      "category": "people-search",
+      "method": "web-form",
+      "opt_out_url": "https://www.fastpeoplesearch.com/removal",
+      "known_fields": [
+        { "label": "Email", "type": "email", "profile_key": "email" },
+        { "label": "First Name", "type": "text", "profile_key": "firstName" },
+        { "label": "Last Name", "type": "text", "profile_key": "lastName" },
+        { "label": "City", "type": "text", "profile_key": "city" },
+        { "label": "State", "type": "select", "profile_key": "state" }
+      ],
+      "notes": "Enter email first, then search and select your record. Removal page URL not linked from homepage. Removal completes within 72 hours of email verification.",
+      "requires_verification": "email",
+      "relist_days": 60,
+      "difficulty": "easy",
+      "last_verified": "2026-02-10"
+    },
+    {
+      "id": "usphonebook",
+      "name": "USPhoneBook",
+      "url": "https://www.usphonebook.com",
+      "category": "people-search",
+      "method": "web-form",
+      "opt_out_url": "https://www.usphonebook.com/opt-out",
+      "known_fields": [
+        { "label": "Email", "type": "email", "profile_key": "email" },
+        { "label": "Phone", "type": "tel", "profile_key": "phone" }
+      ],
+      "notes": "Enter email and phone to find your profile. Straightforward 5-10 minute process. Profile removed within 72 hours of email verification.",
+      "requires_verification": "email",
+      "relist_days": 90,
+      "difficulty": "easy",
+      "last_verified": "2026-02-10"
+    },
+    {
+      "id": "cyberbackgroundchecks",
+      "name": "CyberBackgroundChecks",
+      "url": "https://www.cyberbackgroundchecks.com",
+      "category": "background-check",
+      "method": "web-form",
+      "opt_out_url": "https://www.cyberbackgroundchecks.com/removal",
+      "known_fields": [
+        { "label": "Email", "type": "email", "profile_key": "email" },
+        { "label": "First Name", "type": "text", "profile_key": "firstName" },
+        { "label": "Last Name", "type": "text", "profile_key": "lastName" }
+      ],
+      "notes": "Two-stage: initial email verification (link valid 24 hours), then suppression form. Processed within 48-72 hours.",
+      "requires_verification": "email",
+      "relist_days": 90,
+      "difficulty": "medium",
+      "last_verified": "2026-02-10"
+    },
+    {
+      "id": "acxiom",
+      "name": "Acxiom",
+      "url": "https://www.acxiom.com",
+      "category": "data-aggregator",
+      "method": "web-form",
+      "opt_out_url": "https://isapps.acxiom.com/optout/optout.aspx",
+      "known_fields": [
+        { "label": "First Name", "type": "text", "profile_key": "firstName" },
+        { "label": "Last Name", "type": "text", "profile_key": "lastName" },
+        { "label": "Email", "type": "email", "profile_key": "email" },
+        { "label": "Phone", "type": "tel", "profile_key": "phone" },
+        { "label": "Address", "type": "text", "profile_key": "address" }
+      ],
+      "notes": "One of the largest data aggregators (200M+ US consumer profiles). Multi-step form: select opt-out segments (mailing, phone, email), then verify. Suppresses sharing — does not fully delete. Processing takes up to 2 weeks.",
+      "requires_verification": "email",
+      "relist_days": 180,
+      "difficulty": "hard",
+      "last_verified": "2026-02-10"
+    },
+    {
+      "id": "epsilon",
+      "name": "Epsilon",
+      "url": "https://www.epsilon.com",
+      "category": "marketing",
+      "method": "web-form",
+      "opt_out_url": "https://legal.epsilon.com/dsr/",
+      "known_fields": [
+        { "label": "First Name", "type": "text", "profile_key": "firstName" },
+        { "label": "Last Name", "type": "text", "profile_key": "lastName" },
+        { "label": "Email", "type": "email", "profile_key": "email" },
+        { "label": "Address", "type": "text", "profile_key": "address" }
+      ],
+      "notes": "One of the largest marketing data companies (200M+ profiles). Identity verified via knowledge-based quiz questions. Opt-out suppresses sharing only — does not delete data. Can also email privacy@epsilon.com or call (866) 267-3861.",
+      "requires_verification": "identity",
+      "relist_days": null,
+      "difficulty": "hard",
+      "last_verified": "2026-02-10"
+    },
+    {
+      "id": "instantcheckmate",
+      "name": "Instant Checkmate",
+      "url": "https://www.instantcheckmate.com",
+      "category": "background-check",
+      "method": "web-form",
+      "opt_out_url": "https://suppression.peopleconnect.us/login",
+      "known_fields": [
+        { "label": "Email", "type": "email", "profile_key": "email" },
+        { "label": "Date of Birth", "type": "date", "profile_key": "dob" },
+        { "label": "First Name", "type": "text", "profile_key": "firstName" },
+        { "label": "Last Name", "type": "text", "profile_key": "lastName" }
+      ],
+      "notes": "Owned by PeopleConnect. 5+ step process through PeopleConnect suppression tool with multiple verification rounds. Removal within 48 hours after submission.",
+      "requires_verification": "email",
+      "relist_days": 120,
+      "difficulty": "hard",
+      "last_verified": "2026-02-10"
+    },
+    {
+      "id": "pipl",
+      "name": "Pipl",
+      "url": "https://pipl.com",
+      "category": "data-aggregator",
+      "method": "web-form",
+      "opt_out_url": "https://pipl.com/personal-information-removal-request",
+      "known_fields": [
+        { "label": "Full Name", "type": "text", "profile_key": "firstName" },
+        { "label": "Email", "type": "email", "profile_key": "email" }
+      ],
+      "notes": "B2B identity verification service. Simple form but only places a suppression flag — does not delete underlying records. Processing takes 14-30 business days. Can also email privacy@pipl.com.",
+      "requires_verification": "captcha",
+      "relist_days": 180,
+      "difficulty": "medium",
+      "last_verified": "2026-02-10"
+    },
+    {
+      "id": "clustrmaps",
+      "name": "ClustrMaps",
+      "url": "https://clustrmaps.com",
+      "category": "people-search",
+      "method": "web-form",
+      "opt_out_url": "https://clustrmaps.com/bl/opt-out",
+      "known_fields": [
+        { "label": "Full Name", "type": "text", "profile_key": "firstName" },
+        { "label": "Email", "type": "email", "profile_key": "email" },
+        { "label": "Listing URL", "type": "text", "profile_key": null },
+        { "label": "Address", "type": "text", "profile_key": "address" }
+      ],
+      "notes": "200M people and 107M addresses in database. Fill out form, select data elements to remove. Processed immediately. Contact support@clustrmaps.com if removal fails.",
+      "requires_verification": null,
+      "relist_days": 90,
+      "difficulty": "easy",
+      "last_verified": "2026-02-10"
+    },
+    {
+      "id": "checkpeople",
+      "name": "CheckPeople",
+      "url": "https://checkpeople.com",
+      "category": "people-search",
+      "method": "web-form",
+      "opt_out_url": "https://checkpeople.com/do-not-sell-info/",
+      "known_fields": [
+        { "label": "Full Name", "type": "text", "profile_key": "firstName" },
+        { "label": "City", "type": "text", "profile_key": "city" },
+        { "label": "State", "type": "select", "profile_key": "state" },
+        { "label": "Email", "type": "email", "profile_key": "email" }
+      ],
+      "notes": "4-step process: search, select record, submit form with email, confirm via email. Takes 5-7 days to process.",
+      "requires_verification": "email",
+      "relist_days": 90,
+      "difficulty": "medium",
+      "last_verified": "2026-02-10"
+    },
+    {
+      "id": "cocofinder",
+      "name": "CocoFinder",
+      "url": "https://cocofinder.com",
+      "category": "people-search",
+      "method": "web-form",
+      "opt_out_url": "https://cocofinder.com/remove-my-info",
+      "known_fields": [
+        { "label": "First Name", "type": "text", "profile_key": "firstName" },
+        { "label": "Last Name", "type": "text", "profile_key": "lastName" },
+        { "label": "Email", "type": "email", "profile_key": "email" },
+        { "label": "Profile URL", "type": "text", "profile_key": null }
+      ],
+      "notes": "Find your profile URL first. Removal within 48 hours. Can also email privacy@cocofinder.com.",
+      "requires_verification": "email",
+      "relist_days": 180,
+      "difficulty": "easy",
+      "last_verified": "2026-02-10"
+    },
+    {
+      "id": "publicrecordsnow",
+      "name": "PublicRecordsNow",
+      "url": "https://www.publicrecordsnow.com",
+      "category": "people-search",
+      "method": "web-form",
+      "opt_out_url": "https://www.publicrecordsnow.com/static/view/optout/",
+      "known_fields": [
+        { "label": "Full Name", "type": "text", "profile_key": "firstName" },
+        { "label": "City", "type": "text", "profile_key": "city" },
+        { "label": "State", "type": "select", "profile_key": "state" }
+      ],
+      "notes": "Powered by PeopleFinders — removing from both sites gives better coverage. Form can sometimes be unreliable. Removal typically within 24-72 hours when it works.",
+      "requires_verification": "captcha",
+      "relist_days": 60,
+      "difficulty": "medium",
+      "last_verified": "2026-02-10"
+    },
+    {
+      "id": "lexisnexis",
+      "name": "LexisNexis",
+      "url": "https://www.lexisnexis.com",
+      "category": "data-aggregator",
+      "method": "web-form",
+      "opt_out_url": "https://optout.lexisnexis.com/",
+      "known_fields": [
+        { "label": "Full Name", "type": "text", "profile_key": "firstName" },
+        { "label": "Date of Birth", "type": "date", "profile_key": "dob" },
+        { "label": "Email", "type": "email", "profile_key": "email" },
+        { "label": "Phone", "type": "tel", "profile_key": "phone" },
+        { "label": "Address", "type": "text", "profile_key": "address" }
+      ],
+      "notes": "One of the most difficult brokers to opt out of. Requires extensive personal info and may request supporting documentation (police report, protective order, etc.). Up to 30 days processing time. Also has a separate direct marketing opt-out.",
+      "requires_verification": "identity",
+      "relist_days": null,
+      "difficulty": "hard",
+      "last_verified": "2026-02-10"
+    },
+    {
+      "id": "peoplelooker",
+      "name": "PeopleLooker",
+      "url": "https://www.peoplelooker.com",
+      "category": "people-search",
+      "method": "web-form",
+      "opt_out_url": "https://www.peoplelooker.com/f/optout/search",
+      "known_fields": [
+        { "label": "First Name", "type": "text", "profile_key": "firstName" },
+        { "label": "Last Name", "type": "text", "profile_key": "lastName" },
+        { "label": "State", "type": "select", "profile_key": "state" }
+      ],
+      "notes": "Owned by BeenVerified — redirects through their opt-out system. Processing typically within 24 hours, up to 15 business days.",
+      "requires_verification": "email",
+      "relist_days": 90,
+      "difficulty": "easy",
+      "last_verified": "2026-02-10"
+    }
+  ]
+}

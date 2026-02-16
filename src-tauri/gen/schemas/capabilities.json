@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"Default capabilities for Opt-Outta","local":true,"windows":["main"],"permissions":["core:default","fs:default","fs:allow-app-read","fs:allow-app-write","fs:allow-appdata-read","fs:allow-appdata-write","fs:allow-resource-read","core:event:default"]}}

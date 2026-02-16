@@ -1,0 +1,16 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicegui/nicegui-tauri/main/capability-schema.json",
+  "identifier": "default",
+  "description": "Default capabilities for Opt-Outta",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "fs:default",
+    "fs:allow-app-read",
+    "fs:allow-app-write",
+    "fs:allow-appdata-read",
+    "fs:allow-appdata-write",
+    "fs:allow-resource-read",
+    "core:event:default"
+  ]
+}
