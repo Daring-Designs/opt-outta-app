@@ -80,17 +80,12 @@ jobs:
         run: npm ci
 
       - name: Build Tauri app
-        shell: bash
         env:
-          _RAW_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           API_PRIVATE_KEY: ${{ secrets.API_PRIVATE_KEY }}
           PLAYBOOK_PUBLIC_KEY: ${{ secrets.PLAYBOOK_PUBLIC_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: |
-          # Strip any newlines GitHub may have injected into the base64 key
-          export TAURI_SIGNING_PRIVATE_KEY=$(printf '%s' "$_RAW_KEY" | tr -d '\n\r')
-          echo "Signing key length: ${#TAURI_SIGNING_PRIVATE_KEY} chars"
-          npx tauri build --target ${{ matrix.target }}
+        run: npx tauri build --target ${{ matrix.target }}
 
       - name: Upload assets and collect sigs
         shell: bash
