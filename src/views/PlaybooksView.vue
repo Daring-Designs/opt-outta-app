@@ -41,6 +41,8 @@ onMounted(async () => {
   if (brokersStore.brokers.length === 0) await brokersStore.loadBrokers();
   await historyStore.loadHistory();
   await playbooksStore.loadLocalPlaybooks();
+  // Fetch playbooks for all brokers so counts show immediately
+  playbooksStore.fetchAllPlaybooks(brokersStore.brokers.map((b) => b.id));
 });
 
 // --- Per-broker run ---

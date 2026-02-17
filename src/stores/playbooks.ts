@@ -393,6 +393,25 @@ export const usePlaybooksStore = defineStore("playbooks", () => {
     }
   }
 
+  async function fetchAllPlaybooks(brokerIds: string[]) {
+    const uncached = brokerIds.filter((id) => !(id in playbookCache.value));
+    if (uncached.length === 0) return;
+    const results = await Promise.allSettled(
+      uncached.map((id) =>
+        invoke<PlaybookSummary[]>("fetch_playbooks", { brokerId: id }).then(
+          (list) => ({ id, list })
+        )
+      )
+    );
+    const newCache = { ...playbookCache.value };
+    for (const r of results) {
+      if (r.status === "fulfilled") {
+        newCache[r.value.id] = r.value.list;
+      }
+    }
+    playbookCache.value = newCache;
+  }
+
   async function fetchPlaybookDetail(id: string) {
     const detail = await invoke<Playbook>("fetch_playbook_detail", { id });
     selectedPlaybook.value = detail;
@@ -582,6 +601,7 @@ export const usePlaybooksStore = defineStore("playbooks", () => {
     // Browsing state + actions
     expandedBrokerId,
     fetchPlaybooks,
+    fetchAllPlaybooks,
     fetchPlaybookDetail,
     getUserVote,
     voteOnPlaybook,
