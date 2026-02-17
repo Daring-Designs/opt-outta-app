@@ -87,7 +87,7 @@ pub struct OptOutEngine {
     pub run_id: String,
     pub status: RunStatus,
     cancel_tx: Option<oneshot::Sender<()>>,
-    user_action_tx: Arc<Mutex<Option<oneshot::Sender<()>>>>,
+    user_action_tx: Arc<Mutex<Option<oneshot::Sender<String>>>>,
 }
 
 impl OptOutEngine {
@@ -109,15 +109,31 @@ impl OptOutEngine {
         self.status = RunStatus::Failed;
     }
 
-    pub async fn signal_user_action(&self) {
+    pub async fn signal_user_action(&self, response: String) {
         let mut guard = self.user_action_tx.lock().await;
         if let Some(tx) = guard.take() {
-            let _ = tx.send(());
+            let _ = tx.send(response);
         }
     }
 
-    pub fn user_action_channel(&self) -> Arc<Mutex<Option<oneshot::Sender<()>>>> {
+    pub fn user_action_channel(&self) -> Arc<Mutex<Option<oneshot::Sender<String>>>> {
         self.user_action_tx.clone()
+    }
+}
+
+/// Convert raw browser/engine errors into human-readable messages.
+fn format_step_error(raw: &str, step_desc: &str) -> String {
+    let lower = raw.to_lowercase();
+    if lower.contains("no node found") || lower.contains("could not find node") || lower.contains("no element found") {
+        format!("Could not find the element for \"{}\". The page layout may have changed.", step_desc)
+    } else if lower.contains("timeout") || lower.contains("timed out") {
+        format!("Timed out waiting for \"{}\". The page may be slow or the element missing.", step_desc)
+    } else if lower.contains("navigation") {
+        format!("Page navigation failed for \"{}\". The URL may be invalid or the site may be down.", step_desc)
+    } else if lower.contains("chrome") || lower.contains("cdp") || lower.contains("connection") {
+        "Lost connection to Chrome. The browser may have closed or crashed.".to_string()
+    } else {
+        format!("Step \"{}\" failed: {}", step_desc, raw)
     }
 }
 
@@ -127,7 +143,7 @@ pub async fn run_opt_outs(
     brokers: Vec<Broker>,
     profile: Profile,
     playbook_selections: std::collections::HashMap<String, String>,
-    user_action_channel: Arc<Mutex<Option<oneshot::Sender<()>>>>,
+    user_action_channel: Arc<Mutex<Option<oneshot::Sender<String>>>>,
     mut cancel_rx: oneshot::Receiver<()>,
 ) {
     use tauri::Emitter;
@@ -338,7 +354,7 @@ pub async fn run_opt_outs(
                         }),
                         None,
                     );
-                    let (tx, rx) = oneshot::channel();
+                    let (tx, rx) = oneshot::channel::<String>();
                     {
                         let mut guard = user_action_channel.lock().await;
                         *guard = Some(tx);
@@ -355,7 +371,7 @@ pub async fn run_opt_outs(
                         }),
                         None,
                     );
-                    let (tx, rx) = oneshot::channel();
+                    let (tx, rx) = oneshot::channel::<String>();
                     {
                         let mut guard = user_action_channel.lock().await;
                         *guard = Some(tx);
@@ -365,16 +381,53 @@ pub async fn run_opt_outs(
                 }
                 FormAction::ManualFill { selector, message } => {
                     // Scroll to and highlight the field in the browser
-                    if let Err(e) = browser::highlight_element(&page, selector).await {
-                        if !step.optional {
-                            playbook_failed = true;
-                            failure_step = Some(step.position);
-                            failure_error = Some(e.clone());
-                            emit_progress(broker, &format!("Failed to highlight field: {}", e), idx, RunStatus::Running, None, None);
-                            break;
+                    let mut highlight_ok = false;
+                    match browser::highlight_element(&page, selector).await {
+                        Ok(_) => { highlight_ok = true; }
+                        Err(e) => {
+                            if step.optional {
+                                continue;
+                            }
+                            // Ask user to retry/skip/abort
+                            let friendly = format_step_error(&e, &step.description);
+                            loop {
+                                emit_progress(
+                                    broker, &friendly, idx, RunStatus::WaitingForUser,
+                                    Some(UserActionRequired::StepFailed {
+                                        message: friendly.clone(),
+                                        step_description: step.description.clone(),
+                                        step_position: step.position,
+                                        broker_name: broker.name.clone(),
+                                    }),
+                                    None,
+                                );
+                                let (tx, rx) = oneshot::channel::<String>();
+                                {
+                                    let mut guard = user_action_channel.lock().await;
+                                    *guard = Some(tx);
+                                }
+                                let decision = rx.await.unwrap_or_else(|_| "abort".to_string());
+                                match decision.as_str() {
+                                    "retry" => {
+                                        match browser::highlight_element(&page, selector).await {
+                                            Ok(_) => { highlight_ok = true; break; }
+                                            Err(_) => continue,
+                                        }
+                                    }
+                                    "skip" => break,
+                                    _ => {
+                                        playbook_failed = true;
+                                        failure_step = Some(step.position);
+                                        failure_error = Some(friendly.clone());
+                                        break;
+                                    }
+                                }
+                            }
+                            if playbook_failed { break; }
+                            if !highlight_ok { continue; }
                         }
-                        continue;
                     }
+                    if !highlight_ok { continue; }
                     emit_progress(
                         broker, message, idx, RunStatus::WaitingForUser,
                         Some(UserActionRequired::UserPrompt {
@@ -383,7 +436,7 @@ pub async fn run_opt_outs(
                         }),
                         None,
                     );
-                    let (tx, rx) = oneshot::channel();
+                    let (tx, rx) = oneshot::channel::<String>();
                     {
                         let mut guard = user_action_channel.lock().await;
                         *guard = Some(tx);
@@ -395,16 +448,52 @@ pub async fn run_opt_outs(
                 }
                 FormAction::ManualSelect { selector, message } => {
                     // Scroll to and highlight the dropdown in the browser
-                    if let Err(e) = browser::highlight_element(&page, selector).await {
-                        if !step.optional {
-                            playbook_failed = true;
-                            failure_step = Some(step.position);
-                            failure_error = Some(e.clone());
-                            emit_progress(broker, &format!("Failed to highlight dropdown: {}", e), idx, RunStatus::Running, None, None);
-                            break;
+                    let mut highlight_ok = false;
+                    match browser::highlight_element(&page, selector).await {
+                        Ok(_) => { highlight_ok = true; }
+                        Err(e) => {
+                            if step.optional {
+                                continue;
+                            }
+                            let friendly = format_step_error(&e, &step.description);
+                            loop {
+                                emit_progress(
+                                    broker, &friendly, idx, RunStatus::WaitingForUser,
+                                    Some(UserActionRequired::StepFailed {
+                                        message: friendly.clone(),
+                                        step_description: step.description.clone(),
+                                        step_position: step.position,
+                                        broker_name: broker.name.clone(),
+                                    }),
+                                    None,
+                                );
+                                let (tx, rx) = oneshot::channel::<String>();
+                                {
+                                    let mut guard = user_action_channel.lock().await;
+                                    *guard = Some(tx);
+                                }
+                                let decision = rx.await.unwrap_or_else(|_| "abort".to_string());
+                                match decision.as_str() {
+                                    "retry" => {
+                                        match browser::highlight_element(&page, selector).await {
+                                            Ok(_) => { highlight_ok = true; break; }
+                                            Err(_) => continue,
+                                        }
+                                    }
+                                    "skip" => break,
+                                    _ => {
+                                        playbook_failed = true;
+                                        failure_step = Some(step.position);
+                                        failure_error = Some(friendly.clone());
+                                        break;
+                                    }
+                                }
+                            }
+                            if playbook_failed { break; }
+                            if !highlight_ok { continue; }
                         }
-                        continue;
                     }
+                    if !highlight_ok { continue; }
                     emit_progress(
                         broker, message, idx, RunStatus::WaitingForUser,
                         Some(UserActionRequired::UserPrompt {
@@ -413,7 +502,7 @@ pub async fn run_opt_outs(
                         }),
                         None,
                     );
-                    let (tx, rx) = oneshot::channel();
+                    let (tx, rx) = oneshot::channel::<String>();
                     {
                         let mut guard = user_action_channel.lock().await;
                         *guard = Some(tx);
@@ -424,16 +513,44 @@ pub async fn run_opt_outs(
                     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
                 }
                 other => {
-                    if let Err(e) = browser::execute_action(&page, other, &profile).await {
-                        if step.optional {
-                            continue;
+                    loop {
+                        match browser::execute_action(&page, other, &profile).await {
+                            Ok(_) => break,
+                            Err(e) => {
+                                if step.optional {
+                                    break;
+                                }
+                                let friendly = format_step_error(&e, &step.description);
+                                emit_progress(
+                                    broker, &friendly, idx, RunStatus::WaitingForUser,
+                                    Some(UserActionRequired::StepFailed {
+                                        message: friendly.clone(),
+                                        step_description: step.description.clone(),
+                                        step_position: step.position,
+                                        broker_name: broker.name.clone(),
+                                    }),
+                                    None,
+                                );
+                                let (tx, rx) = oneshot::channel::<String>();
+                                {
+                                    let mut guard = user_action_channel.lock().await;
+                                    *guard = Some(tx);
+                                }
+                                let decision = rx.await.unwrap_or_else(|_| "abort".to_string());
+                                match decision.as_str() {
+                                    "retry" => continue,
+                                    "skip" => break,
+                                    _ => {
+                                        playbook_failed = true;
+                                        failure_step = Some(step.position);
+                                        failure_error = Some(friendly);
+                                        break;
+                                    }
+                                }
+                            }
                         }
-                        playbook_failed = true;
-                        failure_step = Some(step.position);
-                        failure_error = Some(e.clone());
-                        emit_progress(broker, &format!("Playbook step failed: {}", e), idx, RunStatus::Running, None, None);
-                        break;
                     }
+                    if playbook_failed { break; }
                 }
             }
 

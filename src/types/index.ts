@@ -86,10 +86,13 @@ export type RunStatus =
   | "failed";
 
 export interface UserActionRequired {
-  type: "solve_captcha" | "verify_email" | "verify_phone" | "manual_step" | "user_prompt";
+  type: "solve_captcha" | "verify_email" | "verify_phone" | "manual_step" | "user_prompt" | "step_failed";
   captcha_type?: string;
   message: string;
   description?: string;
+  step_description?: string;
+  step_position?: number;
+  broker_name?: string;
 }
 
 export interface OptOutProgress {

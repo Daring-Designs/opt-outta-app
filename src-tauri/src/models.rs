@@ -213,6 +213,13 @@ pub enum UserActionRequired {
     ManualStep { message: String },
     #[serde(rename = "user_prompt")]
     UserPrompt { message: String, description: Option<String> },
+    #[serde(rename = "step_failed")]
+    StepFailed {
+        message: String,
+        step_description: String,
+        step_position: u32,
+        broker_name: String,
+    },
 }
 
 /// Status of an individual broker submission

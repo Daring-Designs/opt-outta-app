@@ -94,10 +94,10 @@ pub async fn start_opt_out_run(
 }
 
 #[tauri::command]
-pub async fn continue_opt_out(state: State<'_, EngineState>) -> Result<(), String> {
+pub async fn continue_opt_out(state: State<'_, EngineState>, response: Option<String>) -> Result<(), String> {
     let guard = state.0.lock().await;
     if let Some(ref engine) = *guard {
-        engine.signal_user_action().await;
+        engine.signal_user_action(response.unwrap_or_else(|| "continue".to_string())).await;
         Ok(())
     } else {
         Err("No active opt-out run".to_string())

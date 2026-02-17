@@ -158,10 +158,22 @@ export const useOptOutStore = defineStore("optout", () => {
     }
   }
 
-  async function continueAfterUserAction() {
-    await invoke("continue_opt_out");
+  async function continueAfterUserAction(response?: string) {
+    await invoke("continue_opt_out", { response: response ?? null });
     actionRequired.value = null;
     status.value = "running";
+  }
+
+  async function retryFailedStep() {
+    await continueAfterUserAction("retry");
+  }
+
+  async function skipFailedStep() {
+    await continueAfterUserAction("skip");
+  }
+
+  async function abortBroker() {
+    await continueAfterUserAction("abort");
   }
 
   async function cancelRun() {
@@ -241,6 +253,9 @@ export const useOptOutStore = defineStore("optout", () => {
     checkChromeInstalled,
     startRun,
     continueAfterUserAction,
+    retryFailedStep,
+    skipFailedStep,
+    abortBroker,
     cancelRun,
     generateReport,
     copyReport,
